@@ -25,9 +25,7 @@ dynamics trajectory files.""")
     help=f"""The prefix for the output directory.""")
     parser.add_argument("--seed", type=int, default=0,
     help="The random number generator seed, default 0.")
-    parser.add_argument("--uncertainty", type=int, default=1,
-    help="Whether to compute uncertainty for the tree's entropy estimate.")
-    parser.add_argument("--min_mass", type=float, default=0.01, 
+    parser.add_argument("--min_mass", type=float, default=0.01,
     help="Minimum probability for conformations, default 0.01.")
     parser.add_argument("--prior",
                         type=str,
@@ -179,7 +177,7 @@ def main():
     weights = mixture_state.r.mean(axis=1)
 
     states = vmap(cst.ci.dbscan.dbscan_eps_std)(D, weights, mixture_state.r)
-    tree = cst.MIST.from_residue_states(states, [str(r) for r in data.residues], prior=args.prior, uncertainty=args.uncertainty)
+    tree = cst.MIST.from_residue_states(states, [str(r) for r in data.residues], prior=args.prior, uncertainty=True)
     fname = output_prefix + "RESULTS_ciMIST.h5"
 
     with open(fname.replace(".h5", ".pkl"), "wb") as f:
