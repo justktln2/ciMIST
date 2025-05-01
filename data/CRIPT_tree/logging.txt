@@ -1,0 +1,58 @@
+INFO:root:Began pipeline at 2025-04-29 17:14:51.959984.
+INFO:root:Initializing mixture model fits
+INFO:root:Beginning von Mises mixture models fits with expectation-maximization...
+INFO:root:Completed EM iteration 0 for all residues in 0 minutes and 7.964 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 1 for all residues in 0 minutes and 4.171 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 2 for all residues in 0 minutes and 4.22 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 3 for all residues in 0 minutes and 4.296 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 4 for all residues in 0 minutes and 4.239 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 5 for all residues in 0 minutes and 4.096 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 6 for all residues in 0 minutes and 4.277 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 7 for all residues in 0 minutes and 4.184 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 8 for all residues in 0 minutes and 4.121 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 9 for all residues in 0 minutes and 4.274 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 10 for all residues in 0 minutes and 4.217 seconds.
+INFO:root:Reached convergence for 0 out of 9 residues.
+INFO:root:Completed EM iteration 11 for all residues in 0 minutes and 4.327 seconds.
+INFO:root:Reached convergence for 1 out of 9 residues.
+INFO:root:Completed EM iteration 12 for all residues in 0 minutes and 4.146 seconds.
+INFO:root:Reached convergence for 2 out of 9 residues.
+INFO:root:Completed EM iteration 13 for all residues in 0 minutes and 4.179 seconds.
+INFO:root:Reached convergence for 2 out of 9 residues.
+INFO:root:Completed EM iteration 14 for all residues in 0 minutes and 4.217 seconds.
+INFO:root:Reached convergence for 4 out of 9 residues.
+INFO:root:Completed EM iteration 15 for all residues in 0 minutes and 4.135 seconds.
+INFO:root:Reached convergence for 4 out of 9 residues.
+INFO:root:Completed EM iteration 16 for all residues in 0 minutes and 4.085 seconds.
+INFO:root:Reached convergence for 4 out of 9 residues.
+INFO:root:Completed EM iteration 17 for all residues in 0 minutes and 4.182 seconds.
+INFO:root:Reached convergence for 4 out of 9 residues.
+INFO:root:Completed EM iteration 18 for all residues in 0 minutes and 4.281 seconds.
+INFO:root:Reached convergence for 5 out of 9 residues.
+INFO:root:Completed EM iteration 19 for all residues in 0 minutes and 4.242 seconds.
+INFO:root:Reached convergence for 7 out of 9 residues.
+INFO:root:Completed EM iteration 20 for all residues in 0 minutes and 4.275 seconds.
+INFO:root:Reached convergence for 7 out of 9 residues.
+INFO:root:Completed EM iteration 21 for all residues in 0 minutes and 4.178 seconds.
+INFO:root:Reached convergence for 7 out of 9 residues.
+INFO:root:Completed EM iteration 22 for all residues in 0 minutes and 4.342 seconds.
+INFO:root:Reached convergence for 7 out of 9 residues.
+INFO:root:Completed EM iteration 23 for all residues in 0 minutes and 4.196 seconds.
+INFO:root:Reached convergence for 7 out of 9 residues.
+INFO:root:Completed EM iteration 24 for all residues in 0 minutes and 4.141 seconds.
+INFO:root:Reached convergence for 7 out of 9 residues.
+INFO:root:Completed EM iteration 25 for all residues in 0 minutes and 4.056 seconds.
+INFO:root:Reached convergence for 8 out of 9 residues.
+INFO:root:Completed EM iteration 26 for all residues in 0 minutes and 4.239 seconds.
+INFO:root:Reached convergence for 9 out of 9 residues.
+INFO:root:Carried out final update of mixture component responsibilities in 0 minutes and 0.419 seconds.

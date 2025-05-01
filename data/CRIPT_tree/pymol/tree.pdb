@@ -1,0 +1,13 @@
+MODEL        0
+ATOM      1  CA  THR A   0       2.056  -8.269  -3.433  1.00  0.05           C  
+ATOM      2  CA  LYS A   1       2.284  -8.132   0.350  1.00  0.06           C  
+ATOM      3  CA  ASN A   2       0.358  -5.302   2.114  1.00  0.05           C  
+ATOM      4  CA  TYR A   3      -1.540  -2.598   0.059  1.00  0.13           C  
+ATOM      5  CA  LYS A   4       0.344   0.371  -1.614  1.00  0.05           C  
+ATOM      6  CA  GLN A   5       0.639   3.490   0.661  1.00  0.05           C  
+ATOM      7  CA  THR A   6      -2.207   5.884   1.388  1.00  0.09           C  
+ATOM      8  CA  SER A   7      -2.048   8.927  -1.014  1.00  0.10           C  
+ATOM      9  CA  VAL A   8      -0.560  12.042   0.801  1.00  0.25           C  
+TER      10      VAL A   8
+ENDMDL
+END
