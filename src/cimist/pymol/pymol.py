@@ -71,6 +71,7 @@ def tree_cartoon(tree, protein_structure, savedir,
         color_name = f"I_{a1}_{a2}"
         I = tree.edges[u,v]["I_pos_mean"]
         RGB = edge_cmap(norm(I))[:-1]
+        RGB = tuple(np.format_float_positional(x, 16) for x in RGB)
                         
         set_bond_color_lines.append(
             f"cmd.set_bond('stick_color', '{color_name}', 'tree and id {a1}', 'tree and id {a2}')\n"
@@ -95,7 +96,7 @@ def tree_cartoon(tree, protein_structure, savedir,
             f"cmd.alter('resi {r.resSeq} and name CA', 'q={entropy_}')\n" )
         
         set_q_lines.append(
-            f"cmd.alter('resi {r.resSeq} and name CA and tree', 'vdw={base_sphere_radius*np.power(entropy_, 1/3)}')\n" )
+            f"cmd.alter('resi {r.resSeq} and name CA and tree', 'vdw={base_sphere_radius*float(np.power(entropy_, 1/3))}')\n" )
         
     tree_file = f"{savedir}" + os.sep + "tree.pdb"
     CA_only.save_pdb(tree_file, bfactors=bfactors)
