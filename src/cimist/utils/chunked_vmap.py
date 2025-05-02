@@ -22,12 +22,12 @@ import jax.numpy as jnp
 from jax.extend import linear_util as lu
 from jax.api_util import argnums_partial
 
-from functools import partial
 from typing import Optional, Callable
 
 _tree_add = partial(jax.tree_util.tree_map, jax.lax.add)
-_tree_zeros_like = partial(jax.tree_util.tree_map, lambda x: jnp.zeros(x.shape, dtype=x.dtype))
-
+_tree_zeros_like = partial(
+    jax.tree_util.tree_map, lambda x: jnp.zeros(x.shape, dtype=x.dtype)
+)
 
 
 def _treeify(f):
@@ -93,7 +93,9 @@ def chunk(x, chunk_size=None):
     """
     return _chunk(x, chunk_size), _unchunk
 
+
 # TODO put it somewher
+
 
 def _multimap(f, *args):
     try:
@@ -247,7 +249,6 @@ class HashablePartial(partial):
 
     def __repr__(self):
         return f"<hashable partial {self.func.__name__} with args={self.args} and kwargs={self.keywords}, hash={hash(self)}>"
-    
 
 
 def _fun(vmapped_fun, chunk_size, argnums, *args, **kwargs):
@@ -259,12 +260,16 @@ def _fun(vmapped_fun, chunk_size, argnums, *args, **kwargs):
     else:
         # split inputs
         def _get_chunks(x):
-            x_chunks = jax.tree_util.tree_map(lambda x_: x_[: n_elements - n_rest, ...], x)
+            x_chunks = jax.tree_util.tree_map(
+                lambda x_: x_[: n_elements - n_rest, ...], x
+            )
             x_chunks = _chunk(x_chunks, chunk_size)
             return x_chunks
 
         def _get_rest(x):
-            x_rest = jax.tree_util.tree_map(lambda x_: x_[n_elements - n_rest :, ...], x)
+            x_rest = jax.tree_util.tree_map(
+                lambda x_: x_[n_elements - n_rest :, ...], x
+            )
             return x_rest
 
         args_chunks = [
@@ -280,7 +285,9 @@ def _fun(vmapped_fun, chunk_size, argnums, *args, **kwargs):
             y = y_chunks
         else:
             y_rest = vmapped_fun(*args_rest, **kwargs)
-            y = jax.tree_util.tree_map(lambda y1, y2: jnp.concatenate((y1, y2)), y_chunks, y_rest)
+            y = jax.tree_util.tree_map(
+                lambda y1, y2: jnp.concatenate((y1, y2)), y_chunks, y_rest
+            )
     return y
 
 
@@ -331,7 +338,7 @@ def apply_chunked(f: Callable, in_axes=0, *, chunk_size: Optional[int]) -> Calla
             is disabled
     """
     _, argnums = _parse_in_axes(in_axes)
-    return _chunk_vmapped_function(f, chunk_size, argnums)
+    return _chunk_vmapped_function(f, chunk_size, argnums)  # type: ignore
 
 
 def vmap_chunked(f: Callable, in_axes=0, *, chunk_size: Optional[int]) -> Callable:
@@ -351,4 +358,4 @@ def vmap_chunked(f: Callable, in_axes=0, *, chunk_size: Optional[int]) -> Callab
     """
     in_axes, argnums = _parse_in_axes(in_axes)
     vmapped_fun = jax.vmap(f, in_axes=in_axes)
-    return _chunk_vmapped_function(vmapped_fun, chunk_size, argnums)
+    return _chunk_vmapped_function(vmapped_fun, chunk_size, argnums)  # type: ignore
