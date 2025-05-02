@@ -4,6 +4,7 @@ using density overlap.
 """
 
 from typing import NamedTuple, Optional
+from dataclasses import dataclass
 import jax.numpy as jnp
 import jax
 from jax.scipy.special import entr
@@ -13,7 +14,7 @@ import cimist.entropy as ee
 from cimist.utils.chunked_vmap import vmap_chunked as cvmap
 from cimist.ci.vmm import MixtureFitState
 
-
+@dataclass
 class ResidueStates(NamedTuple):
     """
     Represents residue conformations, including trajectories of conformations,
