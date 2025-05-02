@@ -7,6 +7,7 @@ import argparse
 import logging
 import datetime
 import time
+from dataclasses import dataclass
 from typing import List, NamedTuple
 from functools import partial, wraps
 
@@ -15,7 +16,7 @@ import dill as pkl
 from jax import jit, vmap, Array
 import jax.numpy as jnp
 import mdtraj as md
-from . import io, ci, utils, MIST, pymol
+from cimist import io, ci, utils, MIST, pymol
 
 jax.config.update("jax_enable_x64", True)
 
@@ -84,6 +85,7 @@ dt = time.time() - t0
 m, s = divmod(dt, 60)  # Renamed variables to avoid redefinition
 
 
+@dataclass
 class MDData(NamedTuple):
     """Container for molecular dynamics data."""
 

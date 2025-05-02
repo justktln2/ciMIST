@@ -1,5 +1,5 @@
 from functools import partial
-from jax import random, numpy as jnp, vmap, jit, grad
+from jax import numpy as jnp, vmap
 import jax
 from .reconstruct import reconstruct_from_internal_coordinates, mp_nerf_jax
 import torch
@@ -31,7 +31,7 @@ convert_natural_to_scnet = partial(converter, roll=-1)
 
 def protein_fold(cloud_mask, point_ref_mask, angles_mask, bond_mask, only_backbone=False, reconstruct_fn=reconstruct_from_internal_coordinates):
     bb_coords = reconstruct_fn(bond_mask[...,:3], *angles_mask[...,:3]).reshape(-1,3,3)
-    if only_backbone: return bb_coords;
+    if only_backbone: return bb_coords
     n = bb_coords.shape[0]
     coords = jnp.concatenate([bb_coords, jnp.zeros((n,11,3))], axis=-2)
 

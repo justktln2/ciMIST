@@ -8,7 +8,7 @@ version = "0.1.0"
 readme = "README.md"
 description = "Tools for inferring residue conformations. maximum information spanning trees, and conformational entropies from protein dynamics."
 license = "MIT"
-license-files = ["LICEN[CSE]*"]
+license-files = ["LICENCSE]*"]
 requires-python = ">=3.9"
 
 dependencies = [
@@ -25,7 +25,13 @@ dependencies = [
     "Bio",
     "mp_nerf==1.0.3",
     "openmm",
+    "statsmodels"
 ]
 
 [project.scripts]
 cimist-fit = "cimist.fit:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11.8",
+]

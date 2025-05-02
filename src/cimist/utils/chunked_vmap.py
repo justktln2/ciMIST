@@ -22,7 +22,6 @@ import jax.numpy as jnp
 from jax.extend import linear_util as lu
 from jax.api_util import argnums_partial
 
-from functools import partial
 from typing import Optional, Callable
 
 _tree_add = partial(jax.tree_util.tree_map, jax.lax.add)

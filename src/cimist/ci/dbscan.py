@@ -28,7 +28,7 @@ class ResidueStates(NamedTuple):
     likelihood states.
     S_se: ArrayLike, the estimated standard error of the entropy estimate
     states_traj: Array, the trajectory of states
-    state_counts: Array, the number of times each state is observed the trajetory
+    state_counts: Array, the number of times each state is observed the trajectory
     dbscan_S: ArrayLike, the entropy estimated from the summed mixture component weights
     dbscan_p: ArrayLike, the summed mixture component weights for each state
     dbscan_eps: ArrayLike, the eps parameter used for DBSCAN

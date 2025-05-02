@@ -6,9 +6,8 @@ Maximum information spanning trees
 import numpy as np
 import pandas as pd
 import networkx as nx
-from scipy.stats import pearsonr, norm
+from scipy.stats import norm
 
-import cmocean as cmo
 import mdtraj as md
 
 
@@ -26,7 +25,6 @@ import cimist.entropy as ee
 import cimist.pymol as pml
 import cimist.ci.dbscan as dbs
 
-from cimist.utils.chunked_vmap import vmap_chunked as cvmap
 
 PRIORS = ("haldane", "independent", "jeffreys")
 

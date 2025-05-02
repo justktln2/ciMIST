@@ -5,7 +5,7 @@ Input and output operations for molecular dynamics trajectories and cimist objec
 import mdtraj as md
 import os
 import dill as pkl
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple
 from . import utils
 
 from jax import Array

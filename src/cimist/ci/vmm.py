@@ -5,8 +5,6 @@ Utilities for von Mises mixture models.
 from typing import NamedTuple
 from dataclasses import dataclass
 
-import numpy as np  # pylint: disable=unused-import
-import scipy.linalg  # pylint: disable=unused-import
 import jax.numpy as jnp
 from jax import Array, jit, vmap
 import jax
