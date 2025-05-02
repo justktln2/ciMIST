@@ -186,7 +186,9 @@ def matrix_dbscan(
     a_core = core_and_gate.at[jnp.diag_indices_from(core_and_gate)].set(0) * n
     # matrix exponential
     c_core = jnp.heaviside(jax.scipy.linalg.expm(a_core, max_squarings=48), 0)
-    symmetrize = lambda X: X + X.T
+
+    def symmetrize(X: Array) -> Array:
+        return X + X.T
 
     one_core_mask = symmetrize(jnp.outer(core_mask, 1 - core_mask))
     one_core_mask = one_core_mask.at[jnp.diag_indices_from(one_core_mask)].set(0)
@@ -334,6 +336,29 @@ def dbscan_trace_eps(
     min_probability_mass: Optional[float] = 0.01,
     vmap_chunksize: Optional[int] = 10,
 ):
+    """
+    Perform a trace of the DBSCAN results over a range of epsilon values.
+    Parameters
+    ----------
+    d : Array
+        The distance matrix, assumed to be symmetric and positive-definite.
+    weights : Array
+        The weight of each sample.
+    r : Array
+        The responsibility of each mixture component for each observation.
+    eps : Array, optional
+        The epsilon parameter for DBSCAN. Default is a linspace from 0.01 to 0.99.
+    min_probability_mass : float, optional
+        The minimum total weight of a point to be considered as a core sample.
+        Default is 0.01.
+    vmap_chunksize : int, optional
+        The chunk size for vmap. Default is 10.
+    Returns
+    -------
+    Array
+        The entropy trace for the DBSCAN results over the range of epsilon values.
+    """
+
     @jit
     def single_sample(eps):
         coarse_graining = matrix_dbscan(d, weights, r, eps, min_probability_mass)
@@ -345,8 +370,8 @@ def dbscan_trace_eps(
             coarse_graining.S, coarse_graining.S_vn, mu, sd, z_sq_vn, eps
         )
 
-    return cvmap(single_sample, chunk_size=vmap_chunksize)(Eps)
-    # return #jax.lax.map(single_sample, Eps)
+    return cvmap(single_sample, chunk_size=vmap_chunksize)(eps)
+    # return #jax.lax.map(single_sample, eps)
 
 
 def dbscan_eps_std(
@@ -359,6 +384,27 @@ def dbscan_eps_std(
     """
     Apply DBSCAN to the distance matrix d with the eps parameter
     set as one minus the standard deviation of the distances.
+    Parameters
+    ----------
+    d : Array
+        The distance matrix, assumed to be symmetric and positive-definite.
+    weights : Array
+        The weight of each sample.
+    r : Array
+        The responsibility of each mixture component for each observation.
+    k : ArrayLike, optional
+        The scaling factor for the epsilon parameter. Default is 1.
+    min_probability_mass : float, optional
+        The minimum total weight of a point to be considered as a core sample.
+        Default is 0.01.
+    Returns
+    -------
+    ResidueStates
+        The inferred residue states, including the number of states, maximum likelihood
+        entropy estimate, standard error of the entropy estimate, trajectory of states,
+        counts of each state, entropy estimate from DBSCAN weights, DBSCAN weights,
+        epsilon parameter used in DBSCAN, minimum probability mass used in DBSCAN,
+        and the coarse-graining operator applied to the von Mises mixture components.
     """
     eps = 1 - k * jnp.std(d[jnp.triu_indices_from(d)])
     dbs = matrix_dbscan(d, weights, r, eps, min_probability_mass)
