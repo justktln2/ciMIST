@@ -101,11 +101,7 @@ def compute_distances(mixture: MixtureFitState) -> Array:
     cross_counts = vmap(lambda x: jnp.sqrt(x).T @ jnp.sqrt(x))(mixture.r)
 
     def normalize_cross_counts(x):
-        return (
-            jnp.sqrt(jnp.diag(1 / jnp.diag(x)))
-            @ x
-            @ jnp.sqrt(jnp.diag(1 / jnp.diag(x)))
-        )
+        return jnp.sqrt(jnp.diag(1 / jnp.diag(x))) @ x @ jnp.sqrt(jnp.diag(1 / jnp.diag(x)))
 
     cosine_distances = 1 - vmap(normalize_cross_counts)(cross_counts)
     return cosine_distances
@@ -142,20 +138,18 @@ def matrix_dbscan(
     A_core = core_and_gate.at[jnp.diag_indices_from(core_and_gate)].set(0) * N
     # matrix exponential
     C_core = jnp.heaviside(jax.scipy.linalg.expm(A_core, max_squarings=48), 0)
-    symmetrize = lambda X: X + X.T
+
+    def symmetrize(X):
+        return X + X.T
 
     one_core_mask = symmetrize(jnp.outer(core_mask, 1 - core_mask))
     one_core_mask = one_core_mask.at[jnp.diag_indices_from(one_core_mask)].set(0)
-    D_border_core = one_core_mask * D * N
+    # D_border_core = one_core_mask * D * N
     A_border_core = jnp.heaviside(one_core_mask * N, 0) * D
 
     # mask to keep only the minimum distance in the case of ambiguity
-    A_border_core = jnp.int64(
-        A_border_core == jnp.min(A_border_core + 1 * (A_border_core == 0), axis=0)
-    )
-    C_non_noise = C_core * core_mask.reshape(-1) + C_core.dot(
-        A_border_core * (1 - core_mask.reshape(-1))
-    )
+    A_border_core = jnp.int64(A_border_core == jnp.min(A_border_core + 1 * (A_border_core == 0), axis=0))
+    C_non_noise = C_core * core_mask.reshape(-1) + C_core.dot(A_border_core * (1 - core_mask.reshape(-1)))
 
     core_border_weights = jnp.dot(C_non_noise, weights)
 
@@ -197,9 +191,7 @@ def matrix_dbscan(
     )
 
 
-def dbscan_jackknife(
-    D: Array, weights: Array, r: Array, eps: float, min_probability_mass: float
-):
+def dbscan_jackknife(D: Array, weights: Array, r: Array, eps: float, min_probability_mass: float):
     arr = jnp.arange(0, len(weights))
 
     def single_jackknife(i):
@@ -254,12 +246,8 @@ def dbscan_trace_eps(
         moments = ee.S_posterior_moments(coarse_graining.w * len(r))
         mu = moments[0]
         sd = jnp.sqrt(moments[1] - mu**2)
-        Z_sq_vn = (
-            jnp.subtract(coarse_graining.S_vn, coarse_graining.S) / (sd + 1e-9)
-        ) ** 2
-        return EntropyTrace(
-            coarse_graining.S, coarse_graining.S_vn, mu, sd, Z_sq_vn, Eps
-        )
+        Z_sq_vn = (jnp.subtract(coarse_graining.S_vn, coarse_graining.S) / (sd + 1e-9)) ** 2
+        return EntropyTrace(coarse_graining.S, coarse_graining.S_vn, mu, sd, Z_sq_vn, Eps)
 
     return cvmap(single_sample, chunk_size=vmap_chunksize)(Eps)
     # return #jax.lax.map(single_sample, Eps)
@@ -279,12 +267,10 @@ def dbscan_eps_std(
     eps = 1 - k * jnp.std(D[jnp.triu_indices_from(D)])
     dbs = matrix_dbscan(D, weights, r, eps, min_probability_mass)
     states_traj = jnp.argmax(dbs.C @ r.T, axis=0).T
-    states, counts = jnp.unique(
-        states_traj, size=D.shape[0], fill_value=-1, return_counts=True
-    )
+    states, counts = jnp.unique(states_traj, size=D.shape[0], fill_value=-1, return_counts=True)
     n_states = jnp.sum(states != -1)
     S_mle = ee.S_mle(counts)
-    N_obs = r.shape[0]
+    # N_obs = r.shape[0]
     _, se = ee.S_posterior_mean_std(counts)
     S_mle_dbs = ee.S_mle(dbs.w)
     return ResidueStates(

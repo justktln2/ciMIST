@@ -34,9 +34,7 @@ def traj_to_dataset(traj: md.Trajectory):
     return DataSet(traj, angles, cloud_mask)
 
 
-def load_traj(
-    trajpath: str, top: str, stride: int = 1, protein_only=True
-) -> md.Trajectory:
+def load_traj(trajpath: str, top: str, stride: int = 1, protein_only=True) -> md.Trajectory:
     if os.path.isfile(trajpath):
         traj = md.load(trajpath, top=top, stride=stride)
     elif os.path.isdir(trajpath):
@@ -71,9 +69,7 @@ def save_tree_h5(tree, path, mode="w", attrs_dict={}):
         T.create_dataset("entropy_se", data=np.array([tree.entropy_se]))
         T.create_dataset("entropy_mle_bias", data=np.array([tree.entropy_mle_bias]))
         T.create_dataset("counts_variance", data=np.array([tree.counts_variance]))
-        T.create_dataset(
-            "structural_variance", data=np.array([tree.structural_variance])
-        )
+        T.create_dataset("structural_variance", data=np.array([tree.structural_variance]))
 
         E_T = T.create_group("edges")
         V_T = T.create_group("vertices")
@@ -86,23 +82,15 @@ def save_tree_h5(tree, path, mode="w", attrs_dict={}):
             data=[(u, v) for u, v in tree.T.edges()],
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
-        E_T.create_dataset(
-            "P", data=np.stack([P for (_, _, P) in tree.T.edges(data="P")])
-        )
+        E_T.create_dataset("P", data=np.stack([P for (_, _, P) in tree.T.edges(data="P")]))
         I_pm = np.array([I for (_, _, I) in tree.T.edges(data="I_pos_mean")])
         I_mle = np.array([I for (_, _, I) in tree.T.edges(data="I")])
         E_T.create_dataset("I_pos_mean", data=I_pm)
         E_T.create_dataset("I_bias_mle", data=I_mle - I_pm)
 
-        E_T.create_dataset(
-            "I_mle", data=np.array([I for (_, _, I) in tree.T.edges(data="I")])
-        )
-        E_T.create_dataset(
-            "I_se", data=np.array([s for (_, _, s) in tree.T.edges(data="I_se")])
-        )
-        E_T.create_dataset(
-            "axes", data=[ax for (_, _, ax) in tree.T.edges(data="axes")]
-        )
+        E_T.create_dataset("I_mle", data=np.array([I for (_, _, I) in tree.T.edges(data="I")]))
+        E_T.create_dataset("I_se", data=np.array([s for (_, _, s) in tree.T.edges(data="I_se")]))
+        E_T.create_dataset("axes", data=[ax for (_, _, ax) in tree.T.edges(data="axes")])
 
         V_T.create_dataset(
             "name",
@@ -117,9 +105,7 @@ def save_tree_h5(tree, path, mode="w", attrs_dict={}):
         V_T.create_dataset("S_pos_mean", data=S_pos_mean)
         V_T.create_dataset("S_mle", data=S_mle)
         V_T.create_dataset("S_bias_mle", data=S_mle - S_pos_mean)
-        V_T.create_dataset(
-            "S_se", data=np.array([S for (_, S) in tree.nodes(data="S_se")])
-        )
+        V_T.create_dataset("S_se", data=np.array([S for (_, S) in tree.nodes(data="S_se")]))
         V_T.create_dataset("p", data=np.stack([p for (_, p) in tree.nodes(data="p")]))
         V_T.create_dataset(
             "S_contribution_se",
@@ -127,17 +113,11 @@ def save_tree_h5(tree, path, mode="w", attrs_dict={}):
         )
 
         E_G.create_dataset("name", data=[(u, v) for u, v in tree.MI_graph.edges()])
-        E_G.create_dataset(
-            "P", data=np.stack([P for (_, _, P) in tree.MI_graph.edges(data="P")])
-        )
-        E_G.create_dataset(
-            "I_mle", data=np.array([I for (_, _, I) in tree.MI_graph.edges(data="I")])
-        )
+        E_G.create_dataset("P", data=np.stack([P for (_, _, P) in tree.MI_graph.edges(data="P")]))
+        E_G.create_dataset("I_mle", data=np.array([I for (_, _, I) in tree.MI_graph.edges(data="I")]))
         # E_G.create_dataset("I_pos_mean", data=np.array([I for (_,_,I) in tree.MI_graph.edges(data="I_pos_mean")]))
         # E_G.create_dataset("I_se", data=np.array([s for (_,_,s) in tree.MI_graph.edges(data="I_se")]))
-        E_G.create_dataset(
-            "axes", data=[ax for (_, _, ax) in tree.MI_graph.edges(data="axes")]
-        )
+        E_G.create_dataset("axes", data=[ax for (_, _, ax) in tree.MI_graph.edges(data="axes")])
 
     # Loading, minimal
 
@@ -224,9 +204,7 @@ def load_h5_tree(path: str) -> cst.MIST:
             I_se=I_se,
         )
 
-    tree = cst.MIST(
-        G, N_obs=N_obs, uncertainty=False, prior=prior, update_posterior=False
-    )
+    tree = cst.MIST(G, N_obs=N_obs, uncertainty=False, prior=prior, update_posterior=False)
     tree.entropy_se = entropy_se
     tree.entropy_mle_bias = entropy_mle_bias
     return tree

@@ -4,9 +4,9 @@ import jax
 from .reconstruct import reconstruct_from_internal_coordinates, mp_nerf_jax
 import torch
 
-roll_first_col_in_last_axis = lambda x, roll=1: jnp.concatenate(
-    [jnp.roll(x[..., :1], roll, axis=-2), x[..., 1:]], axis=-1
-)
+
+def roll_first_col_in_last_axis(x, roll=1):
+    return jnp.concatenate([jnp.roll(x[..., :1], roll, axis=-2), x[..., 1:]], axis=-1)
 
 
 # Convert between scnet odd conventions and 'natural' ones. #FIXME make bijector.
@@ -22,9 +22,7 @@ def converter(input, roll):
 
         # Fix difference in how angle is specified
         angles, torsions = angles_mask
-        angles = (
-            jnp.pi - angles
-        )  # due to historical scnet reasons, the scnet angle is defined as pi-angle
+        angles = jnp.pi - angles  # due to historical scnet reasons, the scnet angle is defined as pi-angle
         angles_mask = jnp.stack([angles, torsions])
         return angles_mask
 
@@ -48,9 +46,7 @@ def protein_fold(
     only_backbone=False,
     reconstruct_fn=reconstruct_from_internal_coordinates,
 ):
-    bb_coords = reconstruct_fn(bond_mask[..., :3], *angles_mask[..., :3]).reshape(
-        -1, 3, 3
-    )
+    bb_coords = reconstruct_fn(bond_mask[..., :3], *angles_mask[..., :3]).reshape(-1, 3, 3)
     if only_backbone:
         return bb_coords
     n = bb_coords.shape[0]
@@ -64,9 +60,7 @@ def protein_fold(
     Fix indexing for residue 0 C-beta. Normally for CB(i) is placed C(i-1)-N(i)-CA(i)->CB(i)
     but first residue is N(1)-C(0)-CA(0)->CB(0) as C(-1) does not exist. The point ref mask here
     is current incorrect so we fix numbering here. indexing i is dealt with later"""
-    point_ref_mask = point_ref_mask.at[:, 0, 1].set(
-        jnp.array([0, 2, 1])
-    )  # [0,2,1] == N, C, CA
+    point_ref_mask = point_ref_mask.at[:, 0, 1].set(jnp.array([0, 2, 1]))  # [0,2,1] == N, C, CA
 
     for i in range(3, 14):
         level_mask = cloud_mask[:, i]
@@ -97,9 +91,7 @@ def protein_fold(
     return coords
 
 
-def get_jax_protein_fold(
-    scaffolds, only_backbone=False, reconstruct_fn=reconstruct_from_internal_coordinates
-):
+def get_jax_protein_fold(scaffolds, only_backbone=False, reconstruct_fn=reconstruct_from_internal_coordinates):
     """
     Takes scaffolds, a dict of torch tensors and returns a
     jit-compiled op converting internal->cartesian coords

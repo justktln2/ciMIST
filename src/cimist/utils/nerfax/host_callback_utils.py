@@ -14,9 +14,7 @@ def call_jax_other_device(jax_outside_fun, arg, *, device):
 
     @jax.custom_vjp
     def make_call(arg):
-        return hcb.call(
-            run_jax_outside_fun, arg, result_shape=jax.eval_shape(jax_outside_fun, arg)
-        )
+        return hcb.call(run_jax_outside_fun, arg, result_shape=jax.eval_shape(jax_outside_fun, arg))
 
     # Define the fwd and bwd custom_vjp functions
     def make_call_vjp_fwd(arg):
@@ -33,9 +31,7 @@ def call_jax_other_device(jax_outside_fun, arg, *, device):
             (ct_in,) = f_vjp(ct)
             return ct_in
 
-        return (
-            call_jax_other_device(jax_outside_vjp_fun, (arg, ct_res), device=device),
-        )
+        return (call_jax_other_device(jax_outside_vjp_fun, (arg, ct_res), device=device),)
 
     make_call.defvjp(make_call_vjp_fwd, make_call_vjp_bwd)
     return make_call(arg)

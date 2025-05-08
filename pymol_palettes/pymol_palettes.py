@@ -81,6 +81,8 @@ https://github.com/bokeh/bokeh/blob/b19f2c5/bokeh/palettes.py
 """
 
 from __future__ import print_function, division
+import json
+import os
 
 __author__ = "Shyam Saladi"
 __version__ = "0.0.1"
@@ -177,9 +179,7 @@ def _viridis_menu(self_cmd, sele):
         [
             1,
             "b-factors(*/CA)",
-            'cmd.spectrum("b", "viridis", selection="(('
-            + sele
-            + ') & */CA)", quiet=0)',
+            'cmd.spectrum("b", "viridis", selection="((' + sele + ') & */CA)", quiet=0)',
         ],
         [0, "", ""],
         [
@@ -209,8 +209,7 @@ def _viridis_menu(self_cmd, sele):
                             [
                                 1,
                                 palette,
-                                'cmd.spectrum("properties[%s]", "%s", "%s")'
-                                % (repr(key), palette, sele),
+                                'cmd.spectrum("properties[%s]", "%s", "%s")' % (repr(key), palette, sele),
                             ]
                             for palette in ("viridis", "blue white red", "green red")
                         ],
@@ -233,16 +232,12 @@ def _by_chain_patch(self_cmd, sele):
         [
             1,
             by_chain_col + "(elem C)",
-            'util.color_chains("('
-            + sele
-            + ' and elem C)", palette="viridis", _self=cmd)',
+            'util.color_chains("(' + sele + ' and elem C)", palette="viridis", _self=cmd)',
         ],
         [
             1,
             by_chain_col + "(*/CA)",
-            'util.color_chains("('
-            + sele
-            + ' and name CA)", palette="viridis", _self=cmd)',
+            'util.color_chains("(' + sele + ' and name CA)", palette="viridis", _self=cmd)',
         ],
         [
             1,
@@ -269,15 +264,13 @@ def _by_chain_patch(self_cmd, sele):
 def _color_auto_patch(self_cmd, sele):
     by_obj_col = _colorize_text("by obj")
     by_obj_c_col = _colorize_text("by obj(elem C)")
-    chainbows_col = _colorize_text("chainbows")
+    # chainbows_col = _colorize_text("chainbows")
     r = pymol.menu._color_auto(self_cmd, sele) + [
         [0, "", ""],
         [
             1,
             by_obj_col,
-            'util.color_objs("('
-            + sele
-            + ' and elem C)", palette="viridis", _self=cmd)',
+            'util.color_objs("(' + sele + ' and elem C)", palette="viridis", _self=cmd)',
         ],
         [
             1,
@@ -324,10 +317,7 @@ def add_viridis_menus():
     print("Changing default palette for spectrum to `turbo`")
     patch_spectrum()
 
-    # Abort if PyMOL is too old.
-    try:
-        from pymol.menu import all_colors_list
-    except ImportError:
+    if not hasattr(pymol.menu, "all_colors_list"):
         print("PyMOL version too old for palettes menus. Requires 1.6.0 or later.")
         return
 
@@ -358,10 +348,7 @@ def remove_viridis_menus():
         print("Palette menus are not present!")
         return
 
-    # Abort if PyMOL is too old.
-    try:
-        from pymol.menu import all_colors_list
-    except ImportError:
+    if not hasattr(pymol.menu, "all_colors_list"):
         print("PyMOL version too old for palettes menus. Requires 1.6.0 or later.")
         return
 
@@ -384,12 +371,12 @@ used, but for efficency the \\RGB values are hard coded below
 """
 
 
-def _convert_hex_color(color):
-    chex = chex[1:]
-    rgb = cmd.get_color_tuple("0x" + chex)
-    rgb = [str(int(v * 9)) for v in rgb]
-    rgb = "".join(rgb)
-    return rgb
+# def _convert_hex_color(color):
+#    chex = chex[1:]
+#    rgb = cmd.get_color_tuple("0x" + chex)
+#    rgb = [str(int(v * 9)) for v in rgb]
+#    rgb = "".join(rgb)
+#    return rgb
 
 
 # last 8 for viridis10 (first two are too dark -- hard to see text on black background)
@@ -1969,8 +1956,6 @@ NEW_PALETTES = {
 }
 
 # The only adaptations specific to ciMIST are here
-import json
-import os
 
 SPECTRA_DIR = os.path.dirname(os.path.realpath(__file__))
 

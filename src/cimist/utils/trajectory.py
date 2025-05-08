@@ -26,9 +26,7 @@ def internal_to_traj(
     mean_bond_length: Optional[bool] = True,
 ) -> md.Trajectory:
     _, _restrict, _to_list = nerfax.parser.get_scnet_loader_fns(reference_traj)
-    cartesian = internal_to_cartesian_scnet(
-        internal_coordinates, _to_list, mean_bond_length=mean_bond_length
-    )
+    cartesian = internal_to_cartesian_scnet(internal_coordinates, _to_list, mean_bond_length=mean_bond_length)
     traj = scnet_cartesian_to_traj(cartesian, reference_traj)
     if superpose:
         traj.superpose(_restrict(reference_traj))
@@ -54,15 +52,11 @@ def internal_to_cartesian_scnet(
     bond_mask = internal_coordinates["bond_mask"]
     if mean_bond_length:
         bond_length = bond_mask.mean(axis=0)
-        cartesian = vmap(
-            lambda A: nerfax.plugin.protein_fold(
-                cloud_mask, point_ref_mask, A, bond_length
-            )
-        )(angles_mask)
+        cartesian = vmap(lambda A: nerfax.plugin.protein_fold(cloud_mask, point_ref_mask, A, bond_length))(angles_mask)
     else:
-        cartesian = vmap(
-            lambda A, l: nerfax.plugin.protein_fold(cloud_mask, point_ref_mask, A, l)
-        )(angles_mask, bond_mask)
+        cartesian = vmap(lambda A, l: nerfax.plugin.protein_fold(cloud_mask, point_ref_mask, A, l))(
+            angles_mask, bond_mask
+        )
     return cartesian
 
 
@@ -82,9 +76,7 @@ def flatten_masks(internal: dict) -> Tuple[Array, Array]:
     def concat(x, y):
         return jnp.concatenate((x, y), axis=-1)
 
-    angles = concat(
-        internal["angles_mask"][:, 0, :, :], internal["angles_mask"][:, 1, :, :]
-    )
+    angles = concat(internal["angles_mask"][:, 0, :, :], internal["angles_mask"][:, 1, :, :])
     angles = jnp.swapaxes(angles, 0, 1)
 
     cloud_mask = concat(internal["cloud_mask"][0], internal["cloud_mask"][0])
@@ -206,17 +198,13 @@ def chunked_pmap(f, chunksize, *, batch_size=None):
         if chunksize > 1:
             if batch_size is None:
                 batch_size = args[0].shape[0] if len(args) > 0 else None
-            assert (
-                batch_size is not None
-            ), "Couldn't get batch_size, please provide explicitly"
+            assert batch_size is not None, "Couldn't get batch_size, please provide explicitly"
             remainder = batch_size % chunksize
             extra = (chunksize - remainder) % chunksize
             args = tree_map(lambda arg: _pad_extra(arg, chunksize), args)
             kwargs = tree_map(lambda arg: _pad_extra(arg, chunksize), kwargs)
             result = pmap(queue)(*args, **kwargs)
-            result = tree_map(
-                lambda arg: jnp.reshape(arg, (-1,) + arg.shape[2:]), result
-            )
+            result = tree_map(lambda arg: jnp.reshape(arg, (-1,) + arg.shape[2:]), result)
             if extra > 0:
                 result = tree_map(lambda x: x[:-extra], result)
         else:

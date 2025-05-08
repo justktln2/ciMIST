@@ -25,9 +25,7 @@ from jax.api_util import argnums_partial
 from typing import Optional, Callable
 
 _tree_add = partial(jax.tree_util.tree_map, jax.lax.add)
-_tree_zeros_like = partial(
-    jax.tree_util.tree_map, lambda x: jnp.zeros(x.shape, dtype=x.dtype)
-)
+_tree_zeros_like = partial(jax.tree_util.tree_map, lambda x: jnp.zeros(x.shape, dtype=x.dtype))
 
 
 def _treeify(f):
@@ -61,9 +59,7 @@ def _chunk(x, chunk_size=None):
 def _chunk_size(x):
     b = set(map(lambda x: x.shape[:2], jax.tree_util.tree_leaves(x)))
     if len(b) != 1:
-        raise ValueError(
-            "The arrays in x have inconsistent chunk_size or number of chunks"
-        )
+        raise ValueError("The arrays in x have inconsistent chunk_size or number of chunks")
     return b.pop()[1]
 
 
@@ -140,9 +136,7 @@ def scan_append_reduce(f, x, append_cond, op=_tree_add):
     # special code path if there is only one element
     # to avoid having to rely on xla/llvm to optimize the overhead away
     if jax.tree_util.tree_leaves(x)[0].shape[0] == 1:
-        return _multimap(
-            lambda c, x: jnp.expand_dims(x, 0) if c else x, append_cond, f(x0)
-        )
+        return _multimap(lambda c, x: jnp.expand_dims(x, 0) if c else x, append_cond, f(x0))
 
     # the original idea was to use pytrees, however for now just operate on the return value tuple
     _get_append_part = partial(_multimap, lambda c, x: x if c else None, append_cond)
@@ -157,9 +151,7 @@ def scan_append_reduce(f, x, append_cond, op=_tree_add):
         y_op = _get_op_part(y)
         y_append = _get_append_part(y)
         # select here to avoid the user having to specify the zero element for op
-        y_reduce = jax.tree_util.tree_map(
-            partial(jax.lax.select, is_first), y_op, op(y_carry, y_op)
-        )
+        y_reduce = jax.tree_util.tree_map(partial(jax.lax.select, is_first), y_op, op(y_carry, y_op))
         return (False, y_reduce), y_append
 
     (_, res_op), res_append = jax.lax.scan(f_, carry_init, x, unroll=1)
@@ -194,9 +186,7 @@ def scanmap(fun, scan_fun, argnums=0):
 
     def f_(*args, **kwargs):
         f = lu.wrap_init(fun, kwargs)
-        f_partial, dyn_args = argnums_partial(
-            f, argnums, args, require_static_args_hashable=False
-        )
+        f_partial, dyn_args = argnums_partial(f, argnums, args, require_static_args_hashable=False)
         return scan_fun(lambda x: f_partial.call_wrapped(*x), dyn_args)
 
     return f_
@@ -219,9 +209,7 @@ class HashablePartial(partial):
         # This is necessary since functools.partial objects do not have a __code__
         # property which we use for the hash
         # For python 3.10+ we still need to take care of merging with another HashablePartial
-        while isinstance(
-            func, partial if sys.version_info < (3, 10) else HashablePartial
-        ):
+        while isinstance(func, partial if sys.version_info < (3, 10) else HashablePartial):
             original_func = func
             func = original_func.func
             args = original_func.args + args
@@ -241,14 +229,13 @@ class HashablePartial(partial):
 
     def __hash__(self):
         if self._hash is None:
-            self._hash = hash(
-                (self.func.__code__, self.args, frozenset(self.keywords.items()))
-            )
+            self._hash = hash((self.func.__code__, self.args, frozenset(self.keywords.items())))
 
         return self._hash
 
     def __repr__(self):
-        return f"<hashable partial {self.func.__name__} with args={self.args} and kwargs={self.keywords}, hash={hash(self)}>"
+        return f"<hashable partial {self.func.__name__} with args={self.args} \
+          and kwargs={self.keywords}, hash={hash(self)}>"
 
 
 def _fun(vmapped_fun, chunk_size, argnums, *args, **kwargs):
@@ -260,40 +247,28 @@ def _fun(vmapped_fun, chunk_size, argnums, *args, **kwargs):
     else:
         # split inputs
         def _get_chunks(x):
-            x_chunks = jax.tree_util.tree_map(
-                lambda x_: x_[: n_elements - n_rest, ...], x
-            )
+            x_chunks = jax.tree_util.tree_map(lambda x_: x_[: n_elements - n_rest, ...], x)
             x_chunks = _chunk(x_chunks, chunk_size)
             return x_chunks
 
         def _get_rest(x):
-            x_rest = jax.tree_util.tree_map(
-                lambda x_: x_[n_elements - n_rest :, ...], x
-            )
+            x_rest = jax.tree_util.tree_map(lambda x_: x_[n_elements - n_rest :, ...], x)
             return x_rest
 
-        args_chunks = [
-            _get_chunks(a) if i in argnums else a for i, a in enumerate(args)
-        ]
+        args_chunks = [_get_chunks(a) if i in argnums else a for i, a in enumerate(args)]
         args_rest = [_get_rest(a) if i in argnums else a for i, a in enumerate(args)]
 
-        y_chunks = _unchunk(
-            scanmap(vmapped_fun, scan_append, argnums)(*args_chunks, **kwargs)
-        )
+        y_chunks = _unchunk(scanmap(vmapped_fun, scan_append, argnums)(*args_chunks, **kwargs))
 
         if n_rest == 0:
             y = y_chunks
         else:
             y_rest = vmapped_fun(*args_rest, **kwargs)
-            y = jax.tree_util.tree_map(
-                lambda y1, y2: jnp.concatenate((y1, y2)), y_chunks, y_rest
-            )
+            y = jax.tree_util.tree_map(lambda y1, y2: jnp.concatenate((y1, y2)), y_chunks, y_rest)
     return y
 
 
-def _chunk_vmapped_function(
-    vmapped_fun: Callable, chunk_size: Optional[int], argnums=0
-) -> Callable:
+def _chunk_vmapped_function(vmapped_fun: Callable, chunk_size: Optional[int], argnums=0) -> Callable:
     """takes a vmapped function and computes it in chunks"""
 
     if chunk_size is None:
@@ -312,9 +287,7 @@ def _parse_in_axes(in_axes):
     if not set(in_axes).issubset((0, None)):
         raise NotImplementedError("Only in_axes 0/None are currently supported")
 
-    argnums = tuple(
-        map(lambda ix: ix[0], filter(lambda ix: ix[1] is not None, enumerate(in_axes)))
-    )
+    argnums = tuple(map(lambda ix: ix[0], filter(lambda ix: ix[1] is not None, enumerate(in_axes))))
     return in_axes, argnums
 
 

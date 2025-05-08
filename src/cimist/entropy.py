@@ -77,19 +77,13 @@ def S_posterior_mean_sq(alpha: Array) -> ArrayLike:
     A = jnp.sum(alpha)
 
     # compute the "diagonal" terms
-    J = (
-        (digamma(alpha + 2) - digamma(A + 2)) ** 2
-        + polygamma(1, alpha + 2)
-        - polygamma(1, A + 2)
-    )
+    J = (digamma(alpha + 2) - digamma(A + 2)) ** 2 + polygamma(1, alpha + 2) - polygamma(1, A + 2)
     diag_sum = jnp.dot(alpha * (alpha + 1), J)
     # "off-diagonal" terms
     partial_term = digamma(alpha + 1) - digamma(A + 2)
     off_diag_terms = jnp.outer(partial_term, partial_term) - polygamma(1, A + 2)
     alpha_outer = jnp.outer(alpha, alpha)
-    off_diag_sum = jnp.sum(off_diag_terms * alpha_outer) - jnp.sum(
-        jnp.diag(off_diag_terms * alpha_outer)
-    )
+    off_diag_sum = jnp.sum(off_diag_terms * alpha_outer) - jnp.sum(jnp.diag(off_diag_terms * alpha_outer))
     return (diag_sum + off_diag_sum) / (A * (A + 1))
 
 
@@ -213,8 +207,7 @@ def I_hs(
         * (
             digamma(beta + n_x + 1)
             - jnp.sum(
-                ((beta * p_y + n_xy) / jnp.expand_dims(beta + n_x, 1))
-                * digamma(beta * p_y + n_xy + 1),
+                ((beta * p_y + n_xy) / jnp.expand_dims(beta + n_x, 1)) * digamma(beta * p_y + n_xy + 1),
                 axis=1,
             )
         )
@@ -256,9 +249,7 @@ def dirichlet_marginal_log_likelihood(beta, n_xy, p_beta=1, p_n=1):
         - jnp.log(p_n)
         + jnp.sum(
             (loggamma(beta) - loggamma(n_x + beta))
-            + jnp.sum(
-                loggamma(n_xy + beta * p_y) - jnp.sum(loggamma(beta * p_y), axis=1)
-            )
+            + jnp.sum(loggamma(n_xy + beta * p_y) - jnp.sum(loggamma(beta * p_y), axis=1))
         )
     )
 

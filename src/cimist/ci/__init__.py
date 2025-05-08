@@ -1,9 +1,12 @@
 import os
-
-import sys
 from multiprocessing import cpu_count
+from . import vmm
+from . import dbscan
 
 n_cpus = cpu_count()
 os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={n_cpus // 2}"
 
-from . import vmm, dbscan
+__all__ = [
+    "vmm",
+    "dbscan",
+]

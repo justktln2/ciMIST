@@ -1,17 +1,13 @@
 import os
 import numpy as np
 import matplotlib as mpl
-import cmocean as cmo
-import cmasher as cm
-import mdtraj as md
+import cmocean as cmo  # type: ignore
+import cmasher as cm  # type: ignore
+import mdtraj as md  # type: ignore
 import matplotlib.pyplot as plt
-import dill as pkl
+import dill as pkl  # type: ignore
 
-CMAPS = {
-    k: v
-    for k, v in cmo.cm.__dict__.items()
-    if "LinearSegmentedColormap" in str(type(v))
-}
+CMAPS = {k: v for k, v in cmo.cm.__dict__.items() if "LinearSegmentedColormap" in str(type(v))}
 CMAPS.update({k: v for k, v in cm.__dict__.items() if "ListedColormap" in str(type(v))})
 
 
@@ -35,15 +31,13 @@ def tree_cartoon(
     if not os.path.exists(savedir):
         os.mkdir(savedir)
 
-    if type(edge_cmap) == str:
+    if isinstance(edge_cmap, str):
         edge_cmap = CMAPS[edge_cmap]
 
     bfactors = np.exp(-entropy_decay_factor * tree.residue_entropies().values)
     bfactors_structure = np.zeros(protein_structure.xyz.shape[1])
     bfactors_structure[protein_structure.topology.select("name CA")] = bfactors
-    protein_structure.save_pdb(
-        savedir + os.sep + "structure.pdb", bfactors=bfactors_structure
-    )
+    protein_structure.save_pdb(savedir + os.sep + "structure.pdb", bfactors=bfactors_structure)
 
     # CREATE PDB FILE WITH ONLY ALPHA CARBONS
     CA_only = protein_structure.atom_slice(protein_structure.topology.select("name CA"))
@@ -56,11 +50,11 @@ def tree_cartoon(
     CA_only = md.Trajectory(CA_only.xyz, md.Topology.from_dataframe(CA_only_df))
 
     # SAVE TREE EDGES AS CONNECT RECORDS
-    connect_records = []
+    # connect_records = []
 
     bond_creation_lines = [5 * "\n" + "#MAKE BONDS FOR TREE EDGES\n"]
     set_bond_radius_lines = [5 * "\n" + "#TREE EDGE RADIUS SETTINGS\n"]
-    norm = mpl.colors.Normalize(vmin=edge_vmin, vmax=edge_vmax)
+    norm = mpl.colors.Normalize(vmin=edge_vmin, vmax=edge_vmax)  # type: ignore
 
     set_color_lines = [5 * "\n", "#COLOR DEFINITIONS\n"]
     set_bond_color_lines = [5 * "\n", "#BOND COLOR SETTINGS\n"]
@@ -77,9 +71,7 @@ def tree_cartoon(
         # residue numbers
         # r1 = CA_only_df.loc[reslist.index(u), "resSeq"]
         # r2 = CA_only_df.loc[reslist.index(v), "resSeq"]
-        bond_creation_lines.append(
-            f"cmd.bond('tree and id {a1}', 'tree and id {a2}')\n"
-        )
+        bond_creation_lines.append(f"cmd.bond('tree and id {a1}', 'tree and id {a2}')\n")
         # define color for tree edge
         color_name = f"I_{a1}_{a2}"
         I = tree.edges[u, v]["I_pos_mean"]
@@ -106,31 +98,24 @@ def tree_cartoon(
 
     for n, r in zip(tree.nodes(), CA_only.topology.residues):
         entropy_ = tree.nodes[n]["S_pos_mean"]
-        set_q_lines.append(
-            f"cmd.alter('resi {r.resSeq} and name CA', 'q={entropy_}')\n"
-        )
+        set_q_lines.append(f"cmd.alter('resi {r.resSeq} and name CA', 'q={entropy_}')\n")
 
         set_q_lines.append(
-            f"cmd.alter('resi {r.resSeq} and name CA and tree', 'vdw={base_sphere_radius*float(np.power(entropy_, 1/3))}')\n"
+            f"cmd.alter('resi {r.resSeq} and name CA and tree',\
+            'vdw={base_sphere_radius * float(np.power(entropy_, 1 / 3))}')\n"
         )
 
     tree_file = f"{savedir}" + os.sep + "tree.pdb"
     CA_only.save_pdb(tree_file, bfactors=bfactors)
 
-    with open(tree_file, "r") as f:
-        pdblines = f.readlines()[:-1]
+    # with open(tree_file, "r") as f:
+    #    pdblines = f.readlines()[:-1]
 
     pmlfname = savedir + os.sep + "draw_tree.pml"
     with open(pmlfname, "w") as f:
         load_lines = ["load structure.pdb\n", "load tree.pdb\n", "hide cartoon, tree"]
 
-        pml_lines = (
-            load_lines
-            + bond_creation_lines
-            + set_color_lines
-            + set_bond_color_lines
-            + set_bond_radius_lines
-        )
+        pml_lines = load_lines + bond_creation_lines + set_color_lines + set_bond_color_lines + set_bond_radius_lines
         pml_lines += set_q_lines
         pml_lines += [
             "set cartoon_cylindrical_helices, 1\n",
@@ -185,8 +170,6 @@ def tree_cartoon(
         pkl.dump((fig, ax), f)
 
     print(f"Output files written to directory {savedir}.")
-    print(
-        f"Navigate to {savedir} and run 'pymol draw_tree.pml' to view tree and open 'colorbar.png' to view colorbar."
-    )
+    print(f"Navigate to {savedir} and run 'pymol draw_tree.pml' to view tree and open 'colorbar.png' to view colorbar.")
 
     return fig, ax

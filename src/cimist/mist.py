@@ -67,12 +67,8 @@ class MIST:
                 size=counts_array_size,
                 fill_value=-1,
             )
-            counts_matrix = init_matrix.at[pair_counts[0][0], pair_counts[0][1]].set(
-                pair_counts[1]
-            )
-            counts_matrix = counts_matrix[
-                :-1, :-1
-            ]  # drop the row and column we added to account for -1 fill value
+            counts_matrix = init_matrix.at[pair_counts[0][0], pair_counts[0][1]].set(pair_counts[1])
+            counts_matrix = counts_matrix[:-1, :-1]  # drop the row and column we added to account for -1 fill value
             P = counts_matrix / counts_matrix.sum()
 
             S_uv = ee.S_mle(P.flatten())
@@ -80,16 +76,12 @@ class MIST:
             S_v = ee.S_mle(P.sum(axis=0))
             S_uv_pos_mean, S_uv_pos_se = jnp.nan, jnp.nan
             I_uv = jnp.subtract(jnp.add(S_u, S_v), S_uv)
-            return ResidueInteraction(
-                S_uv, S_u, S_v, I_uv, P, S_uv_pos_mean, S_uv_pos_se
-            )
+            return ResidueInteraction(S_uv, S_u, S_v, I_uv, P, S_uv_pos_mean, S_uv_pos_se)
 
         pairwise_interaction_ = jit(pairwise_interaction)
         pairs = jnp.array(list(combinations(list(range(len(names))), 2)))
         name_pairs = [(names[i], names[j]) for (i, j) in pairs]
-        compute_pairs = vmap(
-            lambda x: pairwise_interaction_(states[x[0]], states[x[1]])
-        )
+        compute_pairs = vmap(lambda x: pairwise_interaction_(states[x[0]], states[x[1]]))
         interactions = compute_pairs(pairs)
 
         MI_graph: nx.Graph = nx.Graph()
@@ -103,7 +95,7 @@ class MIST:
             S_pos_mean, S_std = jnp.nan, jnp.nan
 
             S_mle = ee.S_mle(p)
-            bias = S_mle - S_pos_mean
+            # bias = S_mle - S_pos_mean
             S_se = S_std
             MI_graph.add_node(
                 u,
@@ -126,12 +118,10 @@ class MIST:
             S_u_se, S_v_se = MI_graph.nodes[u]["S_se"], MI_graph.nodes[v]["S_se"]
             I_uv_pos_mean = S_u + S_v - S_uv
 
-            bias = I - I_uv_pos_mean
+            # bias = I - I_uv_pos_mean
             variance = S_se_uv**2 + S_u_se**2 + S_v_se**2
             I_se = jnp.sqrt(variance)
-            MI_graph.add_edge(
-                u, v, P=P, I=I, axes=(u, v), I_pos_mean=I_uv_pos_mean, I_se=I_se
-            )
+            MI_graph.add_edge(u, v, P=P, I=I, axes=(u, v), I_pos_mean=I_uv_pos_mean, I_se=I_se)
 
         tree = MIST(
             MI_graph,
@@ -156,7 +146,7 @@ class MIST:
         if tree is None:
             self.fit()
         else:
-            self.T = tree
+            self.T: nx.Graph = tree
 
         self.N_obs = N_obs
         self.prior = prior
@@ -178,21 +168,15 @@ class MIST:
                 self.MI_graph.nodes[u]["p"] = P.sum(axis=1)
 
             # finally, set the posterior mean entropy
-            if update_posterior or jnp.isnan(
-                self.T.nodes[u].get("S_pos_mean", jnp.nan)
-            ):
+            if update_posterior or jnp.isnan(self.T.nodes[u].get("S_pos_mean", jnp.nan)):
                 _set_S_posterior(self, u, prior=self.prior, uncertainty=uncertainty)
 
         # Set posterior mean mutual informations
         # vmap opporunity, but profiling suggested very small marginal benefit
         for u, v in self.T.edges():
-            if update_posterior or jnp.isnan(
-                self.T.edges[u, v].get("I_pos_mean", jnp.nan)
-            ):
+            if update_posterior or jnp.isnan(self.T.edges[u, v].get("I_pos_mean", jnp.nan)):
                 _set_I_posterior(self, u, v, uncertainty=uncertainty, prior=self.prior)
-                self.MI_graph.edges[u, v]["I_pos_mean"] = self.T.edges[u, v][
-                    "I_pos_mean"
-                ]
+                self.MI_graph.edges[u, v]["I_pos_mean"] = self.T.edges[u, v]["I_pos_mean"]
                 self.MI_graph.edges[u, v]["I_se"] = self.T.edges[u, v]["I_se"]
 
         if calculate_marginals:
@@ -228,9 +212,7 @@ class MIST:
         """
 
         Z_alpha = abs(norm.ppf((1 - ci) / 2))
-        credibility_interval = (
-            self.entropy() + jnp.array([-1, 1]) * Z_alpha * self.entropy_se
-        )
+        credibility_interval = self.entropy() + jnp.array([-1, 1]) * Z_alpha * self.entropy_se
         return credibility_interval
 
     def __getitem__(self, n):
@@ -310,14 +292,10 @@ class MIST:
         elif kind == "empirical":
             return self.empirical_information_matrix()
         else:
-            raise Exception(
-                "argument kind must be 'hybrid', 'chow_liu' , or 'empirical'."
-            )
+            raise Exception("argument kind must be 'hybrid', 'chow_liu' , or 'empirical'.")
 
     def empirical_information_matrix(self):
-        return np.array(
-            nx.adjacency_matrix(self.MI_graph, weight="I_pos_mean").todense()
-        )
+        return np.array(nx.adjacency_matrix(self.MI_graph, weight="I_pos_mean").todense())
 
     def chow_liu_information_matrix(self):
         return np.array(nx.adjacency_matrix(self.MI_graph, weight="I_CL").todense())
@@ -325,14 +303,11 @@ class MIST:
     def tree_MIs(self):
         return pd.Series(
             [self.T.edges[e]["I_pos_mean"] for e in self.T.edges()],
-            index=self.T.edges(),
+            index=self.T.edges(),  # type: ignore
         )  # type: ignore
 
     def trim(self, nodelist):
-        paths = [
-            list(nx.utils.pairwise(nx.shortest_path(self.T, u, v)))
-            for (u, v) in combinations(nodelist, 2)
-        ]
+        paths = [list(nx.utils.pairwise(nx.shortest_path(self.T, u, v))) for (u, v) in combinations(nodelist, 2)]
         return self.T.edge_subgraph(reduce(lambda x, y: list(set(x + y)), paths))
 
     def to_pymol(
@@ -413,7 +388,7 @@ class MIST:
         return None
 
     def refit_to_subset(self, nodelist, uncertainty=False):
-        MI = self.MI_graph.subgraph(nodelist)
+        # MI = self.MI_graph.subgraph(nodelist)
         raise NotImplementedError
         # return MIST(MI, uncertainty=uncertainty) missing Nobs
 
@@ -441,12 +416,13 @@ def significance_test_edges(tree, fdr=0.01):
 
     mis = get_upper_triu(tree.empirical_information_matrix())
     fitted = expon(*(expon.fit(mis)))
-    N_hypotheses = len(tree.nodes()) - 1
-    adj_pval = lambda x: 1 - fitted.cdf(x)
+
+    # N_hypotheses = len(tree.nodes()) - 1
+    def adj_pval(x):
+        return 1 - fitted.cdf(x)
+
     mis_tree = np.array([MI for (_, _, MI) in tree.edges(data="I")])
-    reject, pvals_corrected, sidak_alphac, bonf_alphac = multipletests(
-        adj_pval(mis_tree), method="fdr_bh", alpha=fdr
-    )
+    reject, pvals_corrected, sidak_alphac, bonf_alphac = multipletests(adj_pval(mis_tree), method="fdr_bh", alpha=fdr)
     mis_signif = mis_tree[reject]
     edges_signif = [(u, v) for (r, (u, v)) in zip(reject, tree.edges()) if r]
     return edges_signif, mis_signif
@@ -463,43 +439,29 @@ def joint_distribution(T, u, v):
         elif axes == (v, u):
             P_uv = T[u][v]["P"].T
         else:
-            raise Exception(
-                f"Axes specification error, received edges {(u,v)} and got axes {axes}"
-            )
-        replace_inf_with_zero = lambda x: np.where(np.isinf(x), 0, x)
+            raise Exception(f"Axes specification error, received edges {(u, v)} and got axes {axes}")
+
+        def replace_inf_with_zero(x):
+            return np.where(np.isinf(x), 0, x)
+
         P_ui = np.diag(replace_inf_with_zero(1.0 / T.nodes[u]["p"]))
         return np.dot(P_ui, P_uv)
 
     P_u = np.diag(T.nodes[u]["p"])
-    P_uv = np.linalg.multi_dot(
-        [P_u] + [_transfer_matrix(T.T, u, v) for (u, v) in path_edges]
-    )
+    P_uv = np.linalg.multi_dot([P_u] + [_transfer_matrix(T.T, u, v) for (u, v) in path_edges])
     return P_uv
 
 
 def compute_error(tree):
     node_variance = jnp.sum(jnp.array([se**2 for (_, se) in tree.nodes(data="S_se")]))
-    edge_variance = jnp.sum(
-        jnp.array([se**2 for (_, _, se) in tree.edges(data="I_se")])
-    )
+    edge_variance = jnp.sum(jnp.array([se**2 for (_, _, se) in tree.edges(data="I_se")]))
 
-    node_bias = jnp.sum(
-        jnp.array(
-            [tree.nodes[u]["S"] - tree.nodes[u]["S_pos_mean"] for u in tree.nodes()]
-        )
-    )
-    edge_bias = jnp.sum(
-        jnp.array(
-            [
-                tree.edges[u, v]["I"] - tree.edges[u, v]["I_pos_mean"]
-                for u, v in tree.edges()
-            ]
-        )
-    )
+    node_bias = jnp.sum(jnp.array([tree.nodes[u]["S"] - tree.nodes[u]["S_pos_mean"] for u in tree.nodes()]))
+    edge_bias = jnp.sum(jnp.array([tree.edges[u, v]["I"] - tree.edges[u, v]["I_pos_mean"] for u, v in tree.edges()]))
 
     bias = node_bias - edge_bias
 
-    sse_counts = node_variance + edge_variance + bias**2
+    # sse_counts = node_variance + edge_variance + bias**2
 
     S_jack, S_jack_contrib, contribution_se = residue_jackknife(tree)
 
@@ -535,17 +497,16 @@ def get_log_prob_and_sampling_fns(tree, root=None):
     # gets all directed edges from root to leaves in an order where parents precede
     # children and forms a stack of transfer matrices in that order
     Paths = get_paths_to_leaves(tree, root)
-    aggregate_paths = lambda p1, p2: p1 + [e for e in p2 if e not in p1]
+
+    def aggregate_paths(p1, p2):
+        return p1 + [e for e in p2 if e not in p1]
+
     edgelist = list(reduce(aggregate_paths, Paths))
-    transfer_matrices = [
-        transfer_matrix(tree.T, u, v) for (u, v) in edgelist
-    ]  # transfer matrices
+    transfer_matrices = [transfer_matrix(tree.T, u, v) for (u, v) in edgelist]  # transfer matrices
 
     # i gets the index of the edge in the product over conditional probabilities
     # nodes.index(u), nodes.index(v) gets the index of each node appearing that edge for use in the barcode
-    edge_ixs = [
-        (i, nodes.index(u), nodes.index(v)) for i, (u, v) in enumerate(edgelist)
-    ]
+    edge_ixs = [(i, nodes.index(u), nodes.index(v)) for i, (u, v) in enumerate(edgelist)]
 
     @jit
     def log_prob_fn(barcode):
@@ -553,9 +514,7 @@ def get_log_prob_and_sampling_fns(tree, root=None):
         sum_couplings = jnp.sum(
             jnp.stack(
                 [
-                    jnp.log(
-                        transfer_matrices[i][barcode[u], barcode[v]]
-                    )  # barcode[u], barcode[v] gets the
+                    jnp.log(transfer_matrices[i][barcode[u], barcode[v]])  # barcode[u], barcode[v] gets the
                     for (i, u, v) in edge_ixs
                 ]
             )
@@ -602,13 +561,13 @@ def transfer_matrix(T, u, v, fix_v=None, pad2dim=100):
     elif axes == (v, u):
         P_uv = jnp.array(T[u][v]["P"].T)
     else:
-        raise Exception(
-            f"Axes specification error, received edges {(u,v)} and got axes {axes}"
-        )
+        raise Exception(f"Axes specification error, received edges {(u, v)} and got axes {axes}")
 
     # Calculate conditional probability (transfer) matrix
     # P(X_v=x_v | X_u = x_u)
-    replace_inf_with_zero = lambda x: jnp.where(jnp.isinf(x), 0, x)
+    def replace_inf_with_zero(x):
+        return jnp.where(jnp.isinf(x), 0, x)
+
     P_ui = replace_inf_with_zero(1.0 / jnp.array(T.nodes[u]["p"]))
     # below is equivalent and saves memory
     # tmat = jnp.dot(P_ui, P_uv)
@@ -619,7 +578,7 @@ def transfer_matrix(T, u, v, fix_v=None, pad2dim=100):
 
 def get_paths_to_leaves(tree, root=None):
     # returns a generator of zips
-    if type(tree) != nx.Graph:
+    if isinstance(tree, MIST):
         T = tree.T
     else:
         T = tree
@@ -694,9 +653,7 @@ def residue_jackknife(tree):
             prior=tree.prior,
         )
         entropies.append(tree_resamp.entropy())
-        contributions.append(
-            tree_resamp.residue_entropies() - 0.5 * tree_resamp.residue_sum_MIs()
-        )
+        contributions.append(tree_resamp.residue_entropies() - 0.5 * tree_resamp.residue_sum_MIs())
     contributions_df = pd.concat(contributions, axis=1).map(float)
     contribution_se = contributions_df.std(axis=1, skipna=True)
     return jnp.array(entropies), contributions_df, contribution_se
@@ -739,9 +696,7 @@ def _set_S_posterior(tree: MIST, u, prior: str = "haldane", uncertainty: bool = 
         tree.MI_graph.nodes[u]["variance"] = jnp.nan
 
 
-def _set_I_posterior(
-    tree: MIST, u, v, prior: str = "haldane", uncertainty: bool = False
-):
+def _set_I_posterior(tree: MIST, u, v, prior: str = "haldane", uncertainty: bool = False):
     N_uv = tree.N_obs * tree.edges[u, v]["P"]
     p_u = tree.nodes[u]["p"]
     p_v = tree.nodes[v]["p"]

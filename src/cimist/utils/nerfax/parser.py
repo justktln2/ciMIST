@@ -29,9 +29,7 @@ def compute_dihedrals(xyz):
     d = xyz[1:] - xyz[:-1]
     index = jnp.arange(3)
     cross_pairs = jnp.stack([index[:-1], index[1:]])
-    c = jnp.cross(
-        *d[cross_pairs]
-    )  # c is the cross products of consecutive displacements
+    c = jnp.cross(*d[cross_pairs])  # c is the cross products of consecutive displacements
     p1 = jnp.einsum("i,i", d[0], c[1]) * jnp.linalg.norm(d[1])
     p2 = jnp.einsum("i,i", c[0], c[1])
     return jnp.arctan2(p1, p2)
@@ -63,33 +61,27 @@ def get_scnet_loader_fns(t):
     Convert positions from pdb to (L,14,3) format
     """
     sc_atomnames = {
-        k: "N CA C O".split() + v["atom-names"]
-        for k, v in mp_nerf.kb_proteins.SC_BUILD_INFO.items()
-        if k != "_"
+        k: "N CA C O".split() + v["atom-names"] for k, v in mp_nerf.kb_proteins.SC_BUILD_INFO.items() if k != "_"
     }
     sc_net_coord_dict = {
-        f"{aa}-{atomname}": i
-        for aa, atomnames in sc_atomnames.items()
-        for i, atomname in enumerate(atomnames)
+        f"{aa}-{atomname}": i for aa, atomnames in sc_atomnames.items() for i, atomname in enumerate(atomnames)
     }
 
     d = t.top.to_dataframe()[0]
     d["resSeq"] -= d.resSeq.min() - 1
     onecode = {k.upper(): v for k, v in IUPACData.protein_letters_3to1_extended.items()}
     d["aa"] = np.vectorize(onecode.__getitem__)(d.resName)
-    atom_idxs = np.vectorize(
-        defaultdict(lambda: None, sc_net_coord_dict).__getitem__, otypes=[object]
-    )(d.aa + "-" + d.name)
+    atom_idxs = np.vectorize(defaultdict(lambda: None, sc_net_coord_dict).__getitem__, otypes=[object])(
+        d.aa + "-" + d.name
+    )
 
-    mask = atom_idxs != None
+    mask = atom_idxs is not None
     res_idxs = d.resSeq.values - 1
 
     def _parse_coords(coords):
         """Converts from mdtraj coords to sidechainnet (L,14,3)"""
         return (
-            jnp.zeros((res_idxs.max() + 1, 14, 3))
-            .at[(res_idxs[mask], atom_idxs[mask].astype(int))]
-            .set(coords[mask])
+            jnp.zeros((res_idxs.max() + 1, 14, 3)).at[(res_idxs[mask], atom_idxs[mask].astype(int))].set(coords[mask])
             * 10
         )  # account for nm->Angstrom unit conversion
 
@@ -145,10 +137,9 @@ def get_data_masks(coords, point_ref):
     # as we will use atoms from the previous residue here
     point_ref_mod = point_ref.at[:, :, 1].set(jnp.array([2, 0, 1, 4])[..., None])
 
-    # coords - (L,14,3). Point_ref (4,L,11) [note, 4 in first axis, not 3 as in point_ref_mask as we use the placed position index here]
-    ref_coords = vmap(lambda x, y: x[y], in_axes=(0, 1))(
-        coords, point_ref_mod
-    ).swapaxes(1, 2)
+    # coords - (L,14,3). Point_ref (4,L,11) [note, 4 in first axis, not 3 as in point_ref_mask as
+    # we use the placed position index here]
+    ref_coords = vmap(lambda x, y: x[y], in_axes=(0, 1))(coords, point_ref_mod).swapaxes(1, 2)
 
     """
     Fix indexing for residue 0 C-beta. Normally for CB(i) is placed C(i-1)-N(i)-CA(i)->CB(i)
@@ -159,27 +150,19 @@ def get_data_masks(coords, point_ref):
     prev_C_ref = jnp.roll(C_ref, 1, axis=0)
     ref_coords = ref_coords.at[:, 1, 0].set(prev_C_ref)
     # Fix for CB referencing of first residue, use (N of second residue, C of first residue, CA of first residue)
-    ref_for_first_CB = jnp.concatenate(
-        [coords[1, 0][None], coords[0, jnp.array([2, 1, 4])]]
-    )
+    ref_for_first_CB = jnp.concatenate([coords[1, 0][None], coords[0, jnp.array([2, 1, 4])]])
     ref_coords = ref_coords.at[0, 1].set(ref_for_first_CB)
 
     ## Pull out the lengths, angles and dihedrals
     data_sc = vmap(decompose_quad)(ref_coords)  # lengths, angles, dihedrals
 
-    insert_zero = lambda x: jnp.concatenate(
-        [jnp.zeros((1,) + x.shape[1:], dtype=x.dtype), x]
-    )
-    data_bb = xyz_to_internal_coords(
-        insert_zero(coords[:, :3]).reshape(-1, 3)
-    )  # Dummy reference residue used
-    lengths, angles, dihedrals = [
-        jnp.concatenate([bb, sc], axis=-1) for bb, sc in zip(data_bb, data_sc)
-    ]
+    def insert_zero(x):
+        return jnp.concatenate([jnp.zeros((1,) + x.shape[1:], dtype=x.dtype), x])
 
-    angles = angles.at[0, 0].set(
-        1.0
-    )  # Non zero value for first angle, which is really a 'ghost' one
+    data_bb = xyz_to_internal_coords(insert_zero(coords[:, :3]).reshape(-1, 3))  # Dummy reference residue used
+    lengths, angles, dihedrals = [jnp.concatenate([bb, sc], axis=-1) for bb, sc in zip(data_bb, data_sc)]
+
+    angles = angles.at[0, 0].set(1.0)  # Non zero value for first angle, which is really a 'ghost' one
     bond_mask = lengths
     angles_mask = jnp.stack([angles, dihedrals])
 
@@ -210,8 +193,6 @@ def make_scaffolds(coords, seq):
 def load_pdb(path, first_frame_only=True):
     coords, seq = load_to_sc_coord_format(path, first_frame_only=first_frame_only)
     scaffolds_natural = (
-        make_scaffolds(coords, seq)
-        if first_frame_only
-        else vmap(make_scaffolds, in_axes=(0, None))(coords, seq)
+        make_scaffolds(coords, seq) if first_frame_only else vmap(make_scaffolds, in_axes=(0, None))(coords, seq)
     )
     return scaffolds_natural

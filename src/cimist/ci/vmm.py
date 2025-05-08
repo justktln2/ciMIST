@@ -51,15 +51,11 @@ class MixtureFitState(NamedTuple):
 
 def sort_by_weight(state: MixtureFitState) -> MixtureFitState:
     ix = jnp.argsort(-state.logw)  # get index from highest to lowest probability
-    state = state._replace(
-        mu=state.mu[ix], kappa=state.kappa[ix], logw=state.logw[ix], r=state.r[:, ix]
-    )
+    state = state._replace(mu=state.mu[ix], kappa=state.kappa[ix], logw=state.logw[ix], r=state.r[:, ix])
     return state
 
 
-def von_mises_mixture_log_pdf(
-    x: Array, mu: Array, kappa: Array, logw: Array, mask: Array
-):
+def von_mises_mixture_log_pdf(x: Array, mu: Array, kappa: Array, logw: Array, mask: Array):
     """
     log-pdf of the von mises fisher mixture distribution
     """
@@ -73,9 +69,7 @@ def von_mises_mixture_log_pdf(
     return logsumexp(minus_FE(mu, kappa, log_softmax(logw)), axis=0)
 
 
-def von_mises_component_log_prob(
-    x: Array, mu: Array, kappa: Array, logw: Array, mask: Array
-):
+def von_mises_component_log_prob(x: Array, mu: Array, kappa: Array, logw: Array, mask: Array):
     """
     log-probability of an individual mixture component, with component weight
     factored in
@@ -84,9 +78,7 @@ def von_mises_component_log_prob(
 
 
 def von_mises_log_pdf(x: Array, mu: Array, kappa: Array, mask: Array):
-    summands = jnp.where(
-        mask, kappa * jnp.cos(x - mu) - jnp.log(2 * jnp.pi * i0(kappa)), 0.0
-    )
+    summands = jnp.where(mask, kappa * jnp.cos(x - mu) - jnp.log(2 * jnp.pi * i0(kappa)), 0.0)
     return jnp.sum(summands, axis=-1)
 
 
@@ -115,9 +107,7 @@ def e_step(x: Array, mu: Array, kappa: Array, logw: Array, mask: Array):
     return r
 
 
-def expected_log_likelihood(
-    x: Array, mu: Array, kappa: Array, r: Array, w: Array, mask: Array
-):
+def expected_log_likelihood(x: Array, mu: Array, kappa: Array, r: Array, w: Array, mask: Array):
     # expected log likelihood of the mixture model over the posterior distribution of the
     # hidden labels
     component_log_likelihoods = vmap(
@@ -178,21 +168,15 @@ def m_step(
         return -expected_log_likelihood(theta, mu, kappas, r, w, mask) / M
 
     x0 = kappa.flatten()
-    solver_options = dict(
-        gtol=gtol, maxiter=maxiter, line_search_maxiter=line_search_maxiter
-    )
+    solver_options = dict(gtol=gtol, maxiter=maxiter, line_search_maxiter=line_search_maxiter)
     result = minimize(negative_ell, x0, method="bfgs", options=solver_options)
     new_kappa = result.x.reshape(kappa.shape)
-    kappa = jnp.where(
-        jnp.isfinite(new_kappa), new_kappa, kappa
-    )  # get rid of nans and infs from the solver
+    kappa = jnp.where(jnp.isfinite(new_kappa), new_kappa, kappa)  # get rid of nans and infs from the solver
 
     return map_to_mpi_pi(mu), scale_kappa(kappa), jnp.log(w / w.max()), result
 
 
-def advance_em(
-    theta: Array, state: MixtureFitState, steps: int = 10, gtol=1e-3, gmaxiter=500
-) -> MixtureFitState:
+def advance_em(theta: Array, state: MixtureFitState, steps: int = 10, gtol=1e-3, gmaxiter=500) -> MixtureFitState:
     """
     Advance the EM algorithm by n_iter steps, starting from the given state.
 
@@ -231,8 +215,7 @@ def advance_em(
 def is_converged(state: MixtureFitState) -> bool:
     converged = cond(
         state.n_iter > 0,
-        lambda x: jnp.abs(x.log_likelihood[x.n_iter] - x.log_likelihood[x.n_iter - 1])
-        < x.atol,
+        lambda x: jnp.abs(x.log_likelihood[x.n_iter] - x.log_likelihood[x.n_iter - 1]) < x.atol,
         lambda x: False,
         state,
     )
@@ -251,13 +234,9 @@ def predict_proba(theta: Array, state: MixtureFitState) -> Array:
 
 
 @jit
-def em_step(
-    theta: Array, state: MixtureFitState, gtol=1e-3, gmaxiter=500
-) -> MixtureFitState:
+def em_step(theta: Array, state: MixtureFitState, gtol=1e-3, gmaxiter=500) -> MixtureFitState:
     r = predict_proba(theta, state)
-    mu, kappa, logw, result = m_step(
-        theta, state.mu, state.kappa, r, state.mask, gtol=gtol, maxiter=gmaxiter
-    )
+    mu, kappa, logw, result = m_step(theta, state.mu, state.kappa, r, state.mask, gtol=gtol, maxiter=gmaxiter)
     ll = mixture_log_likelihood(theta, state.mu, state.kappa, state.logw, state.mask)
     log_likelihood = state.log_likelihood.at[state.n_iter].set(ll)
     state = state._replace(
@@ -282,9 +261,7 @@ def em_step(
     return state
 
 
-def step_if_not_converged(
-    theta: Array, state: MixtureFitState, gtol=1e-3, gmaxiter=500
-):
+def step_if_not_converged(theta: Array, state: MixtureFitState, gtol=1e-3, gmaxiter=500):
     def do_nothing(theta, state, gtol=1e-3, gmaxiter=500):
         return state
 
@@ -292,9 +269,7 @@ def step_if_not_converged(
     return state
 
 
-def init_random_mixture_state(
-    theta, mask, key, n_components=100, maxiter=100, atol=1e-2
-):
+def init_random_mixture_state(theta, mask, key, n_components=100, maxiter=100, atol=1e-2):
     # initialize random mixture states using kmeans++ to set the cluster centers and
     # random concentration parameters
     key_kmpp, key_kappa = jax.random.split(key)
@@ -411,9 +386,7 @@ def spherical_kmeans_plus_plus(theta, n_clusters, key):
 
         new_center = theta_hat[ix].T
 
-        normalized_cluster_centers = jnp.hstack(
-            (normalized_cluster_centers, new_center)
-        ).squeeze()
+        normalized_cluster_centers = jnp.hstack((normalized_cluster_centers, new_center)).squeeze()
         ixs.append(ix)
 
     ixs = jnp.concatenate(ixs)
@@ -459,14 +432,12 @@ def _init_params(
     # kappa_bond is actually bond angles plus omega torsion, which is tightly constrained
     # at 180 degrees
     kappa_bond = (
-        jax.random.uniform(kappa_bond_key, minval=100, maxval=500, shape=(K, 15))
-        * cloud_mask[:15]
+        jax.random.uniform(kappa_bond_key, minval=100, maxval=500, shape=(K, 15)) * cloud_mask[:15]
     )  # bond and omega torsion
     # kappa_torsion excludes omega torsion, which is localized like a bond angle
     # torsion mixture components should localize to between about 10 and 30 degrees
     kappa_torsion = (
-        jax.random.uniform(kappa_torsion_key, minval=25, maxval=50, shape=(K, 13))
-        * cloud_mask[15:]
+        jax.random.uniform(kappa_torsion_key, minval=25, maxval=50, shape=(K, 13)) * cloud_mask[15:]
     )  # torsion
 
     kappa = concat(kappa_bond, kappa_torsion)
@@ -481,16 +452,10 @@ def analytical_kl(mu, kappa, mask):
     mu_vecs = jnp.stack([jnp.cos(mu), jnp.sin(mu)])
     # 0*(jnp.log(kappa[0] / kappa[1])),
     kappa_terms = jnp.where(mask, -jnp.log(i0(kappa[0]) / i0(kappa[1])), 0.0)
-    rv = i1(kappa[0]) / i0(
-        kappa[0]
-    )  # *(kappa[0]*complex_mu[0] - kappa[1])#*complex_mu[1])
+    rv = i1(kappa[0]) / i0(kappa[0])  # *(kappa[0]*complex_mu[0] - kappa[1])#*complex_mu[1])
     # only need on diagonal terms
     # via equation 37 of K&R this should also be equal to rv * (kappa[0] - kappa[1]*jnp.cos(mu[0]-mu[1]))
-    mu_terms = jnp.diag(
-        (rv * (kappa[0] * mu_vecs[:, 0, :] - kappa[1] * mu_vecs[:, 1, :])).T.dot(
-            mu_vecs[:, 0]
-        )
-    )
+    mu_terms = jnp.diag((rv * (kappa[0] * mu_vecs[:, 0, :] - kappa[1] * mu_vecs[:, 1, :])).T.dot(mu_vecs[:, 0]))
     return mu_terms.sum() + kappa_terms.sum()
 
 

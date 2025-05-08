@@ -7,9 +7,10 @@ from .host_callback_utils import call_jax_other_device
 
 Array = jnp.ndarray
 
-insert_zero = lambda x: jnp.concatenate(
-    [jnp.zeros((1,) + x.shape[1:], dtype=x.dtype), x]
-)
+
+def insert_zero(x):
+    """Insert a zero at the beginning of the array"""
+    return jnp.concatenate([jnp.zeros((1,) + x.shape[1:], dtype=x.dtype), x])
 
 
 def mp_nerf_jax(a, b, c, l, theta, chi):
@@ -20,13 +21,13 @@ def mp_nerf_jax(a, b, c, l, theta, chi):
     n_plane_ = jnp.cross(n_plane, cb)
     rotate = jnp.stack([cb, n_plane_, n_plane], axis=-1)
     rotate /= jnp.linalg.norm(rotate, axis=-2, keepdims=True)
-    direction = jnp.array(
-        [jnp.cos(theta), jnp.sin(theta) * jnp.cos(chi), jnp.sin(theta) * jnp.sin(chi)]
-    )
+    direction = jnp.array([jnp.cos(theta), jnp.sin(theta) * jnp.cos(chi), jnp.sin(theta) * jnp.sin(chi)])
     return c + l * jnp.einsum("ji,i", rotate, direction)
 
 
-normalise = lambda x: x / jnp.linalg.norm(x, axis=-1, keepdims=True)
+def normalise(x):
+    """Normalise a vector"""
+    return x / jnp.linalg.norm(x, axis=-1, keepdims=True)
 
 
 def get_axis_matrix(a, b, c, norm=True):
@@ -79,9 +80,7 @@ def chain_sequential_rotations_scan(rotations: Array) -> Array:
 def associative_rotate_coords(prev, current):
     rotations_im1 = prev[..., 0, :, :]  # R_(i-1)
     # sub_rotation_i, pre_rotated_coords_i = current
-    return vmap(jnp.matmul)(
-        current, rotations_im1
-    )  # returns stacked [R_i, rotated_coords_i]
+    return vmap(jnp.matmul)(current, rotations_im1)  # returns stacked [R_i, rotated_coords_i]
 
 
 def work_inefficient_all_prefix_sum(operator, x):
@@ -136,30 +135,28 @@ def work_inefficient_all_prefix_sum(operator, x):
 #     return reconstruct_sequential(l, theta, chi)
 
 
-def mp_nerf_jax_pretrig_self_normalising(
-    ba, cb, c, length, sin_angle, cos_angle, sin_dihedral, cos_dihedral
-):
+def mp_nerf_jax_pretrig_self_normalising(ba, cb, c, length, sin_angle, cos_angle, sin_dihedral, cos_dihedral):
     # Credit to https://github.com/EleutherAI/mp_nerf
     n_plane = normalise(jnp.cross(ba, cb))
-    n_plane_ = jnp.cross(
-        n_plane, cb
-    )  # this is already normalised as cb is orthogonal to n_plane by construction
+    n_plane_ = jnp.cross(n_plane, cb)  # this is already normalised as cb is orthogonal to n_plane by construction
     rotate = jnp.stack([cb, n_plane_, n_plane], axis=-1)
-    direction = jnp.array(
-        [cos_angle, sin_angle * cos_dihedral, sin_angle * sin_dihedral]
-    )
+    direction = jnp.array([cos_angle, sin_angle * cos_dihedral, sin_angle * sin_dihedral])
     dc = rotate @ direction  # this is already normalised
     return c + length * dc, dc
 
 
-expand = lambda x: (jnp.sin(x), jnp.cos(x))  # expand x in sin,cos basis
+def expand(x):
+    return (jnp.sin(x), jnp.cos(x))  # expand x in sin,cos basis
 
 
 def reconstruct_from_internal_coordinates_pure_sequential(lengths, angles, dihedrals):
     """
-    We follow the simplifications in Parsons et al, Practical conversion from torsion space to Cartesian space for in silico protein synthesis, 10.1002/jcc.20237
+    We follow the simplifications in Parsons et al, Practical conversion from torsion
+    space to Cartesian space for in silico protein synthesis, 10.1002/jcc.20237
     detailed as SN-NeRF
-    Implementation here computes the sin and cos of angles and dihedrals externally to the scan so vectorised trig instructions can be used
+
+    Implementation here computes the sin and cos of angles and dihedrals externally to
+    the scan so vectorised trig instructions can be used
 
     """
 
@@ -182,9 +179,7 @@ def reconstruct_from_internal_coordinates_pure_sequential(lengths, angles, dihed
     return coords
 
 
-def reconstruct_from_internal_coordinates(
-    l, theta, chi, mode="associative", device: Optional[Device] = None
-):
+def reconstruct_from_internal_coordinates(l, theta, chi, mode="associative", device: Optional[Device] = None):
     """
     Note: the first three dihedrals, the first two angles and the first length
         are dummy values as they are relative to ghost atoms
@@ -202,23 +197,17 @@ def reconstruct_from_internal_coordinates(
     # a ghost residue rather than the first residue
     ghost_N, ghost_CA, ghost_C = ref_pos
 
-    split = lambda x, axis=-1: jax.tree_util.tree_map(
-        lambda x: x.squeeze(axis), jnp.split(x, x.shape[axis], axis=axis)
-    )
+    def split(x, axis=-1):
+        return jax.tree_util.tree_map(lambda x: x.squeeze(axis), jnp.split(x, x.shape[axis], axis=axis))
+
     d = jax.tree_util.tree_map(split, [l, theta, chi])
-    N_data, CA_data, C_data = [
-        [d[i][j] for i in range(3)] for j in range(3)
-    ]  # reorder [type][atom] to [atom][type]
+    N_data, CA_data, C_data = [[d[i][j] for i in range(3)] for j in range(3)]  # reorder [type][atom] to [atom][type]
 
     # Place N
-    N = vmap(mp_nerf_jax, in_axes=(None, None, None, 0, 0, 0))(
-        ghost_N, ghost_CA, ghost_C, *N_data
-    )
+    N = vmap(mp_nerf_jax, in_axes=(None, None, None, 0, 0, 0))(ghost_N, ghost_CA, ghost_C, *N_data)
 
     # Place CA
-    CA = vmap(mp_nerf_jax, in_axes=(None, None, 0, 0, 0, 0))(
-        ghost_CA, ghost_C, N, *CA_data
-    )
+    CA = vmap(mp_nerf_jax, in_axes=(None, None, 0, 0, 0, 0))(ghost_CA, ghost_C, N, *CA_data)
 
     # Place C
     C = vmap(mp_nerf_jax, in_axes=(None, 0, 0, 0, 0, 0))(ghost_C, N, CA, *C_data)
@@ -236,16 +225,18 @@ def reconstruct_from_internal_coordinates(
     if mode != "combo_associative":
         # do rotation concatenation
         if mode == "associative":
-            f = lambda rotations: lax.associative_scan(
-                lambda x, y: jnp.matmul(y, x), rotations
-            )
+
+            def rotations_fn(rotations):
+                return lax.associative_scan(lambda x, y: jnp.matmul(y, x), rotations)
+
+            f = rotations_fn
         elif mode == "sequential_slow":
             f = chain_sequential_rotations
         elif mode == "sequential":
             f = chain_sequential_rotations_scan
         elif mode == "associative_work_inefficient":
             f = partial(work_inefficient_all_prefix_sum, lambda x, y: jnp.matmul(y, x))
-        if device != None:
+        if device is not None:
             # host call back, automatically uses the first cpu device
             rotations = call_jax_other_device(f, rotations, device=device)
         else:
@@ -258,10 +249,10 @@ def reconstruct_from_internal_coordinates(
         coords = jnp.concatenate([pre_rotated_coords[:1], coords])
     else:
         # We rotate the coords and compute the combined rotations together in one associative op
-        f = lambda rotations, pre_rotated_coords: lax.associative_scan(
-            associative_rotate_coords,
-            jnp.stack([rotations, pre_rotated_coords], axis=1),
-        )
+        def combined_rotations_fn(rotations, pre_rotated_coords):
+            return lax.associative_scan(associative_rotate_coords, jnp.stack([rotations, pre_rotated_coords], axis=1))
+
+        f = combined_rotations_fn
         coords = f(rotations, pre_rotated_coords)[:, 1]
 
     # apply translational offset

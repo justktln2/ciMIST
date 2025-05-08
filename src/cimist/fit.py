@@ -2,11 +2,20 @@
 Author: Kaitlin
 """
 
+import jax
+import time
 import os
 import argparse
 import logging
+import cimist as cst
+import dill as pkl  # type: ignore
+import mdtraj as md  # type: ignore
+from jax import jit, vmap, Array
 from typing import List, NamedTuple
 from functools import partial, wraps
+import jax.numpy as jnp
+
+jax.config.update("jax_enable_x64", True)
 
 
 def parse_args():
@@ -21,13 +30,9 @@ or to a directory that contains all trajectory files and nothing else.
 Note that if a directory is supplied, all files in that directory must be valid molecular
 dynamics trajectory files.""",
     )
-    parser.add_argument(
-        "-s", "--topology", type=str, help="""The path to the topology file."""
-    )
+    parser.add_argument("-s", "--topology", type=str, help="""The path to the topology file.""")
 
-    parser.add_argument(
-        "-o", "--output_prefix", help="""The prefix for the output directory."""
-    )
+    parser.add_argument("-o", "--output_prefix", help="""The prefix for the output directory.""")
     parser.add_argument(
         "--seed",
         type=int,
@@ -45,15 +50,17 @@ dynamics trajectory files.""",
         type=str,
         default="haldane",
         choices={"percs", "haldane", "jeffreys", "laplace"},
-        help="""Prior to use for residue entropy and pairwise mutual information estimation with the Dirichlet distribution.
-Each prior corresponds to adding the same number of pseudocounts to each conformation.
-Options are:
-    -'haldane' : 0 pseudocounts (DEFAULT)
-    -'percs' : 1/K pseudocounts, where K is the number of conformations
-    -'jeffreys' : 1/2 pseudocounts
-    -'laplace' : 1 pseudocount
-    
-Note that of these options, only 'haldane' and 'percs' add the same total number of pseudocounts to each distribution.""",
+        help="""Prior to use for residue entropy and pairwise mutual information estimation 
+        with the Dirichlet distribution. Each prior corresponds to adding the same number of 
+        pseudocounts to each conformation.
+          Options are:
+              -'haldane' : 0 pseudocounts (DEFAULT)
+              -'percs' : 1/K pseudocounts, where K is the number of conformations
+              -'jeffreys' : 1/2 pseudocounts
+              -'laplace' : 1 pseudocount
+              
+        Note that of these options, only 'haldane' and 'percs' add the same total number of
+        pseudocounts to each distribution.""",
     )
     return parser.parse_args()
 
@@ -63,18 +70,8 @@ if __name__ == "__main__":
     args = parse_args()
 
 
-import time
-
 t0 = time.time()
 
-import jax
-
-jax.config.update("jax_enable_x64", True)
-import cimist as cst
-import dill as pkl  # type: ignore
-from jax import jit, vmap, Array
-import jax.numpy as jnp
-import mdtraj as md  # type: ignore
 
 dt = time.time() - t0
 m, s = divmod(dt, 60)
@@ -122,15 +119,10 @@ def to_single_chain(traj):
     df = traj.topology.to_dataframe()[0]
     seq_ordered = df[df.name == "CA"]
     ix_update_dict = {
-        (s, n, c): i
-        for (i, (s, n, c)) in enumerate(
-            zip(seq_ordered.resSeq, seq_ordered.resName, seq_ordered.chainID)
-        )
+        (s, n, c): i for (i, (s, n, c)) in enumerate(zip(seq_ordered.resSeq, seq_ordered.resName, seq_ordered.chainID))
     }
 
-    df["resSeq"] = df[["resSeq", "resName", "chainID"]].apply(
-        lambda x: ix_update_dict[tuple(x)], axis=1
-    )
+    df["resSeq"] = df[["resSeq", "resName", "chainID"]].apply(lambda x: ix_update_dict[tuple(x)], axis=1)
     df["chainID"] = 0
     new_top = md.Topology.from_dataframe(df)
 
@@ -175,18 +167,11 @@ def main():
     # define path to folder and create it if it does not exist
     logging.info("Initializing mixture model fits")
     mixture_state = combine_mixture_fit_batches(
-        [
-            init_states_func(*args)
-            for args in zip(angles_batches, mask_batches, keys_batches)
-        ]
+        [init_states_func(*args) for args in zip(angles_batches, mask_batches, keys_batches)]
     )
 
-    logging.info(
-        "Beginning von Mises mixture models fits with expectation-maximization..."
-    )
-    step_if_converged = jit(
-        partial(cst.ci.vmm.step_if_not_converged, gtol=1e-3, gmaxiter=500)
-    )
+    logging.info("Beginning von Mises mixture models fits with expectation-maximization...")
+    step_if_converged = jit(partial(cst.ci.vmm.step_if_not_converged, gtol=1e-3, gmaxiter=500))
     _advance = vmap(step_if_converged)
     num_residues = len(mixture_state.converged)  # TODO: ????
     num_converged = jnp.sum(mixture_state.converged)
@@ -202,14 +187,13 @@ def main():
                 mixture_state = update_r(data.angles, mixture_state)
             break
         print(80 * "-")
-        advance = time_and_message(
-            f"Completed EM iteration {i} for all residues", _advance
-        )
+        advance = time_and_message(f"Completed EM iteration {i} for all residues", _advance)
         mixture_state = advance(data.angles, mixture_state)
         num_converged = jnp.sum(mixture_state.converged)
 
         logging.info(
-            f"Reached convergence for {jnp.sum(mixture_state.converged)} out of {len(mixture_state.converged)} residues."
+            f"Reached convergence for {jnp.sum(mixture_state.converged)} out of \
+              {len(mixture_state.converged)} residues."
         )
 
     if mixture_state.r.sum() == 0:
@@ -220,9 +204,7 @@ def main():
             mixture_state.logw,
             mixture_state.mask,
         )
-        mixture_state = mixture_state._replace(
-            logw=jnp.log(new_r.mean(axis=1)), r=new_r
-        )
+        mixture_state = mixture_state._replace(logw=jnp.log(new_r.mean(axis=1)), r=new_r)
 
     n_components = jnp.int64(mixture_state.n_components)
     n_iter = jnp.int64(mixture_state.n_iter)
@@ -251,9 +233,7 @@ def main():
     weights = mixture_state.r.mean(axis=1)
 
     states = vmap(cst.ci.dbscan.dbscan_eps_std)(D, weights, mixture_state.r)
-    tree = cst.MIST.from_residue_states(
-        states, [str(r) for r in data.residues], prior=args.prior, uncertainty=True
-    )
+    tree = cst.MIST.from_residue_states(states, [str(r) for r in data.residues], prior=args.prior, uncertainty=True)
     fname = output_prefix + "RESULTS_ciMIST.h5"
 
     with open(fname.replace(".h5", ".pkl"), "wb") as f:
