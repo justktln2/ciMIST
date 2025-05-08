@@ -1,4 +1,3 @@
-# ruff: noqa
 """
 Input and output operations for molecular dynamics trajectories and cimist objects.
 """
@@ -16,6 +15,7 @@ import jax.numpy as jnp
 import networkx as nx
 import h5py  # type: ignore
 
+from .mist import MIST
 
 class DataSet(NamedTuple):
     traj: md.Trajectory
@@ -97,7 +97,7 @@ def save_tree_h5(tree, path, mode="w", attrs_dict={}):
             data=[n for n in tree.nodes()],
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
-        S_mle = data = np.array([S for (_, S) in tree.nodes(data="S")])
+        S_mle = np.array([S for (_, S) in tree.nodes(data="S")])
         S_pos_mean = np.array([S for (_, S) in tree.nodes(data="S_pos_mean")])
         N_res_states = np.array([K for (_, K) in tree.nodes(data="N_states")])
 
@@ -140,7 +140,7 @@ def save_VMM_h5(mixture, path, mode="a"):
                 Mixture.create_dataset(field, data=np.array(value))  # type: ignore
 
 
-def load_h5_tree(path: str) -> cst.MIST:
+def load_h5_tree(path: str) -> MIST:
     """
     Load a tree saved as an HDF5 file.
 
@@ -161,8 +161,8 @@ def load_h5_tree(path: str) -> cst.MIST:
         if isinstance(file, h5py.Datatype):
             raise ValueError("File is not a valid HDF5 file.")
         nodes = file["tree/vertices/name"].asstr()[:]
-        S_pm = file["tree/vertices/S_pos_mean"][:]
-        S_se = file["tree/vertices/S_se"][:]
+        #S_pm = file["tree/vertices/S_pos_mean"][:]
+        #S_se = file["tree/vertices/S_se"][:]
         p = jnp.array(file["tree/vertices/p"][:])
         edges = file["MI_graph/edges/name"].asstr()[:]
         I = file["MI_graph/edges/I_mle"][:]  # type: ignore
@@ -191,8 +191,8 @@ def load_h5_tree(path: str) -> cst.MIST:
         P,
     ):
         u_, v_ = u.replace("_A", ""), v.replace("_A", "")
-        p_u = G.nodes[u_]["p"]
-        p_v = G.nodes[v_]["p"]
+        #p_u = G.nodes[u_]["p"]
+        #p_v = G.nodes[v_]["p"]
         G.add_edge(u_, v_, I=I_uv, P=jnp.array(P_uv), axes=(u_, v_))
 
     for (u, v), I_pos_mean, I_se in zip(tree_edges, I_pm, I_ses):
