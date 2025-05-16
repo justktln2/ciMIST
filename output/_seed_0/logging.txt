@@ -1,0 +1,43 @@
+INFO:root:Began pipeline at 2025-05-16 15:13:49.256344.
+INFO:root:Initializing mixture model fits
+INFO:root:Beginning von Mises mixture models fits with expectation-maximization...
+INFO:root:Completed EM iteration 0 for all residues in 2 minutes and 34.095 seconds.
+INFO:root:Reached convergence for 0 out of 326 residues.
+INFO:root:Completed EM iteration 1 for all residues in 2 minutes and 29.82 seconds.
+INFO:root:Reached convergence for 0 out of 326 residues.
+INFO:root:Completed EM iteration 2 for all residues in 2 minutes and 29.251 seconds.
+INFO:root:Reached convergence for 0 out of 326 residues.
+INFO:root:Completed EM iteration 3 for all residues in 2 minutes and 28.796 seconds.
+INFO:root:Reached convergence for 0 out of 326 residues.
+INFO:root:Completed EM iteration 4 for all residues in 2 minutes and 29.151 seconds.
+INFO:root:Reached convergence for 0 out of 326 residues.
+INFO:root:Completed EM iteration 5 for all residues in 2 minutes and 29.587 seconds.
+INFO:root:Reached convergence for 0 out of 326 residues.
+INFO:root:Completed EM iteration 6 for all residues in 2 minutes and 28.529 seconds.
+INFO:root:Reached convergence for 1 out of 326 residues.
+INFO:root:Completed EM iteration 7 for all residues in 2 minutes and 29.544 seconds.
+INFO:root:Reached convergence for 8 out of 326 residues.
+INFO:root:Completed EM iteration 8 for all residues in 2 minutes and 27.68 seconds.
+INFO:root:Reached convergence for 21 out of 326 residues.
+INFO:root:Completed EM iteration 9 for all residues in 2 minutes and 29.01 seconds.
+INFO:root:Reached convergence for 54 out of 326 residues.
+INFO:root:Completed EM iteration 10 for all residues in 2 minutes and 28.25 seconds.
+INFO:root:Reached convergence for 118 out of 326 residues.
+INFO:root:Completed EM iteration 11 for all residues in 2 minutes and 29.426 seconds.
+INFO:root:Reached convergence for 180 out of 326 residues.
+INFO:root:Completed EM iteration 12 for all residues in 2 minutes and 29.489 seconds.
+INFO:root:Reached convergence for 242 out of 326 residues.
+INFO:root:Completed EM iteration 13 for all residues in 2 minutes and 30.817 seconds.
+INFO:root:Reached convergence for 280 out of 326 residues.
+INFO:root:Completed EM iteration 14 for all residues in 2 minutes and 29.807 seconds.
+INFO:root:Reached convergence for 303 out of 326 residues.
+INFO:root:Completed EM iteration 15 for all residues in 2 minutes and 28.963 seconds.
+INFO:root:Reached convergence for 311 out of 326 residues.
+INFO:root:Completed EM iteration 16 for all residues in 2 minutes and 28.317 seconds.
+INFO:root:Reached convergence for 314 out of 326 residues.
+INFO:root:Completed EM iteration 17 for all residues in 2 minutes and 29.062 seconds.
+INFO:root:Reached convergence for 318 out of 326 residues.
+INFO:root:Completed EM iteration 18 for all residues in 2 minutes and 28.985 seconds.
+INFO:root:Reached convergence for 321 out of 326 residues.
+INFO:root:Completed EM iteration 19 for all residues in 2 minutes and 29.445 seconds.
+INFO:root:Reached convergence for 321 out of 326 residues.
