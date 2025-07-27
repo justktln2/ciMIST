@@ -1,5 +1,5 @@
 """
-Input and output operations for molecular dynamics trajectories and cimist objects.
+Input and output operations for molecular dynamics trajectories and ciMIST objects.
 """
 
 import mdtraj as md
@@ -21,15 +21,138 @@ class DataSet(NamedTuple):
     cloud_mask: Array
 
 def load_dataset(trajfile: str, topfile: str, stride: int=1) -> DataSet:
+    """
+    Load and preprocess molecular dynamics trajectory for analysis.
+    
+    Handles both single trajectory files and directories containing multiple
+    trajectory files. Automatically filters to protein atoms and performs
+    structural superposition for consistent alignment.
+    
+    Parameters
+    ----------
+    trajpath : str
+        Path to trajectory file or directory containing trajectory files.
+        Supported formats: XTC, DCD, H5, PDB, etc. (MDTraj compatible)
+    top : str
+        Path to topology file defining molecular structure and connectivity
+    stride : int, default=1
+        Frame sampling interval - loads every nth frame to reduce memory usage
+    protein_only : bool, default=True
+        If True, extract only protein atoms and discard water/ions
+        
+    Returns
+    -------
+    md.Trajectory
+        Preprocessed trajectory with:
+        - Protein atoms only (if protein_only=True)
+        - All frames superposed to first frame for structural alignment
+        - Reduced to every stride-th frame
+        
+    Raises
+    ------
+    IOError
+        If trajpath does not exist as file or directory
+        
+    Examples
+    --------
+    >>> # Load every 10th frame from single file
+    >>> traj = load_traj("sim.xtc", "protein.pdb", stride=10)
+    >>> 
+    >>> # Load from directory of files
+    >>> traj = load_traj("trajectory_dir/", "system.pdb")
+    """
+
     traj = load_traj(trajfile, topfile, stride=stride)
     return traj_to_dataset(traj)
 
 def traj_to_dataset(traj: md.Trajectory):
+    """
+    Load and preprocess molecular dynamics trajectory for analysis.
+    
+    Handles both single trajectory files and directories containing multiple
+    trajectory files. Automatically filters to protein atoms and performs
+    structural superposition for consistent alignment.
+    
+    Parameters
+    ----------
+    trajpath : str
+        Path to trajectory file or directory containing trajectory files.
+        Supported formats: XTC, DCD, H5, PDB, etc. (MDTraj compatible)
+    top : str
+        Path to topology file defining molecular structure and connectivity
+    stride : int, default=1
+        Frame sampling interval - loads every nth frame to reduce memory usage
+    protein_only : bool, default=True
+        If True, extract only protein atoms and discard water/ions
+        
+    Returns
+    -------
+    md.Trajectory
+        Preprocessed trajectory with:
+        - Protein atoms only (if protein_only=True)
+        - All frames superposed to first frame for structural alignment
+        - Reduced to every stride-th frame
+        
+    Raises
+    ------
+    IOError
+        If trajpath does not exist as file or directory
+        
+    Examples
+    --------
+    >>> # Load every 10th frame from single file
+    >>> traj = load_traj("sim.xtc", "protein.pdb", stride=10)
+    >>> 
+    >>> # Load from directory of files
+    >>> traj = load_traj("trajectory_dir/", "system.pdb")
+    """
+
     internal = utils.traj_to_internal(traj)
     angles, cloud_mask = utils.flatten_masks(internal)
     return DataSet(traj, angles, cloud_mask)
 
 def load_traj(trajpath: str, top: str, stride: int = 1, protein_only=True) -> md.Trajectory:
+    """
+    Load and preprocess molecular dynamics trajectory for analysis.
+    
+    Handles both single trajectory files and directories containing multiple
+    trajectory files. Automatically filters to protein atoms and performs
+    structural superposition for consistent alignment.
+    
+    Parameters
+    ----------
+    trajpath : str
+        Path to trajectory file or directory containing trajectory files.
+        Supported formats: XTC, DCD, H5, PDB, etc. (MDTraj compatible)
+    top : str
+        Path to topology file defining molecular structure and connectivity
+    stride : int, default=1
+        Frame sampling interval - loads every nth frame to reduce memory usage
+    protein_only : bool, default=True
+        If True, extract only protein atoms and discard water/ions
+        
+    Returns
+    -------
+    md.Trajectory
+        Preprocessed trajectory with:
+        - Protein atoms only (if protein_only=True)
+        - All frames superposed to first frame for structural alignment
+        - Reduced to every stride-th frame
+        
+    Raises
+    ------
+    IOError
+        If trajpath does not exist as file or directory
+        
+    Examples
+    --------
+    >>> # Load every 10th frame from single file
+    >>> traj = load_traj("sim.xtc", "protein.pdb", stride=10)
+    >>> 
+    >>> # Load from directory of files
+    >>> traj = load_traj("trajectory_dir/", "system.pdb")
+    """
+
     if os.path.isfile(trajpath):
         traj = md.load(trajpath, top=top, stride=stride)
     elif os.path.isdir(trajpath):
@@ -43,6 +166,9 @@ def load_traj(trajpath: str, top: str, stride: int = 1, protein_only=True) -> md
     return traj
 
 def to_pickle(obj: Any, path: str) -> None:
+    """
+    Serialize object using dill
+    """
     with open(path, "wb") as f:
         pkl.dump(obj, f)
 
@@ -55,6 +181,7 @@ def save_tree_h5(tree, path, mode="w", attrs_dict={}):
         T = f.create_group("tree")
         T.create_dataset("N_obs", data=np.array([tree.N_obs]))
         T.attrs["prior"] = tree.prior
+        T.attrs["entropy_estimator"] = tree.entropy_estimator
 
         T.create_dataset("entropy", data=np.array([tree.entropy()]))
         T.create_dataset("sum_MI", data=np.array([tree.sum_MIs()]))
@@ -156,6 +283,7 @@ def load_h5_tree(path):
         
 
         prior = file["tree"].attrs["prior"]
+        entropy_estimator = file["tree"].attrs["entropy_estimator"]
 
         entropy_se = file["tree/entropy_se"][:][0]
         entropy_mle_bias = file["tree/entropy_mle_bias"][:][0]
@@ -179,7 +307,12 @@ def load_h5_tree(path):
                 I_se=I_se,
                 )
         
-    tree = cst.MIST(G, N_obs=N_obs, uncertainty=False, prior=prior, update_posterior=False)
+    tree = cst.MIST(G, N_obs=N_obs,
+    uncertainty=False,
+    prior=prior,
+    entropy_estimator=entropy_estimator
+    )
+
     tree.entropy_se = entropy_se
     tree.entropy_mle_bias = entropy_mle_bias
     return tree

@@ -28,8 +28,6 @@ import cimist.ci.dbscan as dbs
 
 from cimist.utils.chunked_vmap import vmap_chunked as cvmap
 
-PRIORS = ("haldane", "independent", "jeffreys")
-
 class ResidueInteraction(NamedTuple):
     S_uv: ArrayLike
     S_u: ArrayLike
@@ -43,6 +41,7 @@ class MIST:
 
     @staticmethod
     def from_residue_states(residue_states: dbs.ResidueStates, names: List[float],
+    entropy_estimator="bayes",
     prior: str="haldane", uncertainty: bool=True):
         """
         Determine the maximum information (maximum likeihood) spanning tree from residue states.
@@ -72,7 +71,7 @@ class MIST:
             return ResidueInteraction(S_uv, S_u, S_v, I_uv, P, S_uv_pos_mean, S_uv_pos_se)
         
         pairwise_interaction_ = jit(pairwise_interaction)
-        pairs = jnp.array(list(combinations(list(range(len(names))), 2)))
+        pairs = jnp.asarray(list(combinations(list(range(len(names))), 2)))
         name_pairs = [(names[i], names[j]) for (i,j) in pairs]
         compute_pairs = vmap(lambda x: pairwise_interaction_(states[x[0]], states[x[1]]))
         interactions = compute_pairs(pairs)
@@ -89,7 +88,7 @@ class MIST:
             S_mle = ee.S_mle(p)
             bias = S_mle - S_pos_mean
             S_se = S_std
-            MI_graph.add_node(u, S=S_mle, S_pos_mean=S_pos_mean, S_se=S_se, p=ctz/ctz.sum(), N_states=K)
+            MI_graph.add_node(u, S=float(S_mle), S_pos_mean=S_pos_mean, S_se=S_se, p=ctz/ctz.sum(), N_states=K)
 
         for ((u,v), I, P, S_uv, S_se_uv) in zip(
                 name_pairs, interactions.I_uv, interactions.P_uv, interactions.S_uv_pos_mean, interactions.S_uv_se
@@ -105,21 +104,37 @@ class MIST:
             bias = I - I_uv_pos_mean
             variance = S_se_uv**2 + S_u_se**2 + S_v_se**2 
             I_se = jnp.sqrt(variance)
-            MI_graph.add_edge(u, v, P=P, I=I, axes=(u,v), I_pos_mean=I_uv_pos_mean, I_se=I_se)
+            MI_graph.add_edge(u, v, P=P, I=float(I), axes=(u,v), I_pos_mean=I_uv_pos_mean, I_se=I_se)
         
 
     
-        tree = MIST(MI_graph, calculate_marginals=False, N_obs=ctz.sum(), uncertainty=uncertainty, prior=prior)
+        tree = MIST(MI_graph, calculate_marginals=False, N_obs=ctz.sum(),
+        uncertainty=uncertainty, entropy_estimator=entropy_estimator, prior=prior)
         return tree
     
     def __init__(self, MI_graph: nx.Graph,
                  N_obs: int,
                  tree: Optional[nx.Graph]=None,
-                 calculate_marginals: Optional[bool]=False,
+                 calculate_marginals: bool=False,
                  uncertainty: bool=False,
+                 entropy_estimator: str="bayes",
                  prior: str="haldane",
-                 update_posterior: bool=False):
+                 build_probability_model: bool=False
+                 ):
+        
+        # validation and configuration
+        self.entropy_estimator = _validate_estimator(entropy_estimator)
+        self.prior = _validate_prior(prior)
+        self.uncertainty = uncertainty
 
+        if self.entropy_estimator == "mle":
+            self._I_key = "I"
+            self._S_key = "S"
+        elif self.entropy_estimator == "bayes":
+            self._I_key = "I_pos_mean"
+            self._S_key = "S_pos_mean"
+        
+        # setting properties
         self.MI_graph = MI_graph
         if tree is None:
             self.fit()
@@ -127,15 +142,12 @@ class MIST:
             self.T = tree
 
         self.N_obs = N_obs
-        self.prior = prior
         self.nodes = self.T.nodes
         self.edges = self.T.edges
         self._implied_marginals_set = False
-
         
         for u in self.nodes():
-            # counts formatting in residue states is currently off
-            # causes problems in implied pairwise marginals without this
+            # ensure matrix dimensions are aligned with given axes
             neighbors = list(nx.neighbors(self.T, u))
             if len(neighbors) > 0:
                 v = neighbors[0]
@@ -147,20 +159,22 @@ class MIST:
                 self.MI_graph.nodes[u]["p"] = P.sum(axis=1)
 
             # finally, set the posterior mean entropy
-            if update_posterior or jnp.isnan(self.T.nodes[u].get("S_pos_mean", jnp.nan)):
-                _set_S_posterior(self, u, prior=self.prior, uncertainty=uncertainty)
+            if (self.entropy_estimator == "bayes" or self.uncertainty) and jnp.isnan(self.MI_graph.nodes[u].get("S_pos_mean", jnp.nan)):
+                _set_S_posterior(self, u, prior=self.prior, uncertainty=self.uncertainty)
+                self.MI_graph.nodes[u]["S_pos_mean"] = self.T.nodes[u]["S_pos_mean"]
 
         # Set posterior mean mutual informations    
         # vmap opporunity, but profiling suggested very small marginal benefit
         for u,v in self.T.edges():
-            if update_posterior or jnp.isnan(self.T.edges[u,v].get("I_pos_mean", jnp.nan)):
-                _set_I_posterior(self, u, v, uncertainty=uncertainty, prior=self.prior)
+            if (self.entropy_estimator == "bayes" or self.uncertainty) and jnp.isnan(self.MI_graph.edges[u,v].get("I_pos_mean", jnp.nan)):
+                _set_I_posterior(self, u, v, uncertainty=self.uncertainty, prior=self.prior)
                 self.MI_graph.edges[u,v]["I_pos_mean"] = self.T.edges[u,v]["I_pos_mean"]
                 self.MI_graph.edges[u,v]["I_se"] = self.T.edges[u,v]["I_se"]
             
         if calculate_marginals:
             self._compute_MI_CL()
-        _, _, self.log_prob, self.sample = get_log_prob_and_sampling_fns(self)
+        if build_probability_model:
+            _, _, self.log_prob, self.sample = get_log_prob_and_sampling_fns(self)
 
         if uncertainty:
             self.entropy_se, self.entropy_mle_bias = compute_error(self)
@@ -210,7 +224,7 @@ class MIST:
         Compute the residue marginal entropies (in nats).
         """
         return pd.Series(
-            np.array([self.T.nodes[n]["S_pos_mean"] for n in self.resnames]),
+            np.array([self.T.nodes[n][self._S_key] for n in self.resnames]),
             index=self.resnames
                          )
     
@@ -218,7 +232,7 @@ class MIST:
         """
         Compute each residue's summed mutual information with all neighbors (in nats).
         """
-        return pd.Series(dict(nx.degree(self.T, weight="I_pos_mean")))
+        return pd.Series(dict(nx.degree(self.T, weight=self._I_key)))
     
     def sum_marginal_entropy(self) -> float:
         """
@@ -230,7 +244,7 @@ class MIST:
         """
         Compute the sum of mutual informations over all tree edges (in nats).
         """
-        return self.T.size(weight="I_pos_mean")
+        return self.T.size(weight=self._I_key)
     
     def entropy(self):
         """
@@ -274,13 +288,13 @@ class MIST:
             raise Exception("argument kind must be 'hybrid', 'chow_liu' , or 'empirical'.")
 
     def empirical_information_matrix(self):
-        return np.array(nx.adjacency_matrix(self.MI_graph, weight="I_pos_mean").todense())
+        return np.array(nx.adjacency_matrix(self.MI_graph, weight=self._I_key).todense())
     
     def chow_liu_information_matrix(self):
         return np.array(nx.adjacency_matrix(self.MI_graph, weight="I_CL").todense())
     
     def tree_MIs(self):
-        return pd.Series([self.T.edges[e]["I_pos_mean"] for e in self.T.edges()], index=self.T.edges())
+        return pd.Series([self.T.edges[e][self._I_key] for e in self.T.edges()], index=self.T.edges())
     
     def trim(self, nodelist):
         paths = [list(nx.utils.pairwise(nx.shortest_path(self.T, u, v))) for (u,v) in combinations(nodelist, 2)]
@@ -348,28 +362,7 @@ class MIST:
 
     def update_prior(self, prior: str):
         return MIST(self.MI_graph, self.N_obs, prior=prior, uncertainty=True, update_posterior=True)
-        
 
-def entropy(p):
-    return ee.S_mle(p)
-
-def significance_test_edges(tree, fdr=0.01):
-    from scipy.stats import expon
-    from statsmodels.stats.multitest import multipletests
-    
-    def get_upper_triu(mat):
-        ix = np.triu_indices_from(mat, k=1)
-        return mat[ix].flatten()
-    mis = get_upper_triu(tree.empirical_information_matrix())
-    fitted = expon(*(expon.fit(mis)))
-    N_hypotheses = len(tree.nodes())-1
-    adj_pval = lambda x: 1-fitted.cdf(x)
-    mis_tree = np.array([MI for (_,_,MI) in tree.edges(data="I")])
-    reject, pvals_corrected, sidak_alphac, bonf_alphac = multipletests(adj_pval(mis_tree), method="fdr_bh", alpha=fdr)
-    mis_signif = mis_tree[reject]
-    edges_signif = [(u,v) for (r, (u,v)) in zip(reject, tree.edges()) if r]
-    return edges_signif, mis_signif
-    
 def joint_distribution(T, u, v):
     path_nodes = nx.shortest_path(T.T, source=u, target=v)
     path_edges = list(nx.utils.pairwise(path_nodes))
@@ -382,15 +375,19 @@ def joint_distribution(T, u, v):
             P_uv = T[u][v]["P"].T
         else:
             raise Exception(f"Axes specification error, received edges {(u,v)} and got axes {axes}")
-        replace_inf_with_zero = lambda x: np.where(np.isinf(x), 0, x)
-        P_ui = np.diag(replace_inf_with_zero(1.0 / T.nodes[u]["p"]))
-        return np.dot(P_ui, P_uv)
+        replace_inf_with_zero = lambda x: jnp.where(jnp.isinf(x), 0, x)
+        P_ui = jnp.diag(replace_inf_with_zero(1.0 / T.nodes[u]["p"]))
+        return jnp.dot(P_ui, P_uv)
     
-    P_u = np.diag(T.nodes[u]["p"])
-    P_uv = np.linalg.multi_dot([P_u] + [_transfer_matrix(T.T,u,v) for (u,v) in path_edges])
+    P_u = jnp.diag(T.nodes[u]["p"])
+    P_uv = jnp.linalg.multi_dot([P_u] + [_transfer_matrix(T.T,u,v) for (u,v) in path_edges])
     return P_uv
 
 def compute_error(tree):
+    """
+    computes estimated uncertainties for the tree.
+    sets properties in-place.
+    """
     node_variance = jnp.sum(jnp.array([se**2 for (_, se) in tree.nodes(data="S_se")]))
     edge_variance = jnp.sum(jnp.array([se**2 for (_, _, se) in tree.edges(data="I_se")]))
 
@@ -399,9 +396,7 @@ def compute_error(tree):
 
     bias = node_bias - edge_bias
 
-    sse_counts = node_variance + edge_variance + bias**2
-
-    S_jack, S_jack_contrib, contribution_se = residue_jackknife(tree)
+    S_jack, S_jack_contrib, contribution_se = residue_pseudojackknife(tree)
 
     tree.S_jack_entropies = S_jack
     tree.S_jack_contrib = S_jack_contrib
@@ -560,13 +555,17 @@ def compute_all_MI_CL(tree, verbose=False):
         tree.T[u][v]["P_CL"] = P_CL
     return tree
 
-def residue_jackknife(tree):
+def residue_pseudojackknife(tree):
     entropies = []
     contributions = []
     for n in tree.nodes():
         other_nodes = [n_ for n_ in tree.MI_graph.nodes() if n_ != n]
         G = nx.subgraph(tree.MI_graph, other_nodes)
-        tree_resamp = MIST(G, N_obs=tree.N_obs, calculate_marginals=False, uncertainty=False, prior=tree.prior)
+
+        # estimator="mle" ensures time is not spent re-computing posterior mean entropies
+        # with little effect on estimated variance
+        tree_resamp = MIST(G, N_obs=tree.N_obs, entropy_estimator="mle", calculate_marginals=False, uncertainty=False, prior=tree.prior)
+        
         entropies.append(tree_resamp.entropy())
         contributions.append(tree_resamp.residue_entropies() - 0.5*tree_resamp.residue_sum_MIs())
     contributions_df = pd.concat(contributions, axis=1).map(float)
@@ -663,3 +662,15 @@ def _set_I_posterior(tree: MIST, u, v, prior: str="haldane", uncertainty: bool=F
         tree.T.edges[u,v]["I_se"] = jnp.nan
     return None
 
+def _validate_estimator(estimator):
+    VALID_ENTROPY_ESTIMATORS = ('bayes', 'mle')
+    if not estimator in VALID_ENTROPY_ESTIMATORS:
+        raise ValueError(f"Argument 'entropy_estimator' must be one of '{VALID_ENTROPY_ESTIMATORS}'")
+    else:
+        return estimator
+
+def _validate_prior(prior):
+    VALID_PRIORS = ('haldane', 'laplace', 'jeffreys', 'percs')
+    if prior not in VALID_PRIORS:
+        raise ValueError(f"Argument 'prior' must be one of '{VALID_PRIORS}'")
+    return prior

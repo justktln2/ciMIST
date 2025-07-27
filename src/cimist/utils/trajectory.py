@@ -18,8 +18,8 @@ def traj_to_internal(traj: md.Trajectory) -> dict:
 
 def internal_to_traj(internal_coordinates: dict,
                      reference_traj: md.Trajectory,
-                     superpose: Optional[bool] = True,
-                     mean_bond_length: Optional[bool] = True
+                     superpose: bool = True,
+                     mean_bond_length: bool = True
                      ) -> md.Trajectory:
     _, _restrict, _to_list = nerfax.parser.get_scnet_loader_fns(reference_traj)
     cartesian = internal_to_cartesian_scnet(internal_coordinates,
