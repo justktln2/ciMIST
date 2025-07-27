@@ -14,7 +14,9 @@ import mdtraj as md
 
 from itertools import combinations
 from functools import reduce
-from typing import List, Optional, NamedTuple
+from typing import List, Optional, NamedTuple, Union
+
+
 
 import jax
 from jax import Array, jit, vmap
@@ -25,6 +27,7 @@ import jax.numpy as jnp
 import cimist.entropy as ee
 import cimist.pymol as pml
 import cimist.ci.dbscan as dbs
+from cimist.ci import ResidueStates
 
 from cimist.utils.chunked_vmap import vmap_chunked as cvmap
 
@@ -40,7 +43,7 @@ class ResidueInteraction(NamedTuple):
 class MIST:
 
     @staticmethod
-    def from_residue_states(residue_states: dbs.ResidueStates, names: List[float],
+    def from_residue_states(residue_states: ResidueStates, names: List[float],
     entropy_estimator="bayes",
     prior: str="haldane", uncertainty: bool=True):
         """
