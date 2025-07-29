@@ -15,6 +15,7 @@ The output of ciMIST is a thermodynamic network model that makes predictions abo
 - predict local entropies consistent with experimentally-probed dynamics (NMR, HDX)
 - identify allosteric hotspots consistent with mutagenesis
 - provide thermodynamically quantifiable insight into mechanisms hidden in conformational entropy
+- facilitate the visual interpretation of molecular dynamics trajectories
 
 ### How it works
 1. The trajectory is transformed to internal coordinates with [nerfax](https://github.com/PeptoneLtd/nerfax).
@@ -40,7 +41,7 @@ Python requirements are listed in `pyproject.toml`.
 We have typically run ciMIST on CPUs with between 256GB and 512GB of RAM.
 
 ## Recommendations
-ciMIST has given good quantitative results on between 5 and 10 microseconds of molecular dynamics data sampled at frequences of once or twice per nanosecond for proteins up to about 300 amino acids long. However, we have found it to be a useful visual aid to the interpretation of trajectories of any length.
+ciMIST has given good quantitative results on between 5 and 10 microseconds of molecular dynamics data sampled at frequencies of once or twice per nanosecond for proteins up to about 300 amino acids long. However, we have found it to be a useful visual aid to the interpretation of trajectories of any length.
 
 ## Usage
 ciMIST ships with a command line tool `ci-mist`. An analysis template illustrating basic aspects of the API is provided in the outputs of each run in the form of a Jupyter notebook.
