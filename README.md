@@ -72,7 +72,7 @@ We have added the option to infer residue states using the ColabFold implementat
 
 To use this option, you will need to [install my fork of ColabDesign](https://github.com/justktln2/ColabDesign).
 
-This is highly experimental, and more thoughtful batching of calculations is needed.
+This is highly experimental, and more thoughtful batching of calculations is needed before it will be possible to profile how this performs on the systems studied in our paper.
 
 ```
 usage: mpnn-mist [-h] [-t TRAJECTORY] [-s TOPOLOGY] [-o OUTPUT_PREFIX]
