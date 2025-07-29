@@ -19,10 +19,10 @@ We have typically run ciMIST on CPUs with between 256GB and 512GB of RAM.
 In our experience, ciMIST has given good results on between 5 and 10 microseconds of molecular dynamics data sampled at frequences of once or twice per nanosecond for proteins up to about 300 amino acids long.
 
 ## Usage
-ciMIST ships with a command line tool, cimist-fit. An analysis template illustrating basic aspects of the API is provided in the outputs of each run.
+ciMIST ships with a command line tool `ci-mist`. An analysis template illustrating basic aspects of the API is provided in the outputs of each run in the form of a Jupyter notebook.
 
 ```
-usage: cimist-fit [-h] [-t TRAJECTORY] [-s TOPOLOGY] [-o OUTPUT_PREFIX] [--seed SEED]
+usage: ci-mist [-h] [-t TRAJECTORY] [-s TOPOLOGY] [-o OUTPUT_PREFIX] [--seed SEED]
                   [--min_mass MIN_MASS] [--prior {percs,haldane,jeffreys,laplace}]
 
 options:
