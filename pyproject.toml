@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "cimist"
 version = "0.1.0"
 readme = "README.md"
-description = "Tools for inferring residue conformations. maximum information spanning trees, and conformational entropies from protein dynamics."
+description = "Tools for inferring residue conformations, maximum information spanning trees, and conformational entropies from protein dynamics."
 license = "MIT"
 license-files = ["LICEN[CSE]*"]
 requires-python = ">=3.9"
@@ -28,3 +28,4 @@ dependencies = [
 
 [project.scripts]
 cimist-fit = "cimist.fit:main"
+mpnn-mist = "cimist.mpnn:main"

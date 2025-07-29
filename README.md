@@ -1,7 +1,7 @@
 # ciMIST
 ### (conformational inference/maximum information spanning tree)
 
-Decoding protein dynamics with residue-wise conformational inference and tree-structured graphical models
+Decoding protein dynamics with residue-wise conformational inference and tree-structured Potts models
 
 ## Installation
 After downloading, navigate to the directory containing ciMIST and run the terminal command.
@@ -11,7 +11,7 @@ python pip install -m .
 
 ## Requirements
 Python requirements are listed in `pyproject.toml`.
-We have typically ciMIST on CPUs with between 256GB and 512GB of RAM.
+We have typically run ciMIST on CPUs with between 256GB and 512GB of RAM.
 
 ## Recommendations
 In our experience, ciMIST has given good results on between 5 and 10 microseconds of molecular dynamics data sampled at frequences of (1 ns)^{-1} and (500 ps)^{-1} for proteins up to about 300 amino acids long.

@@ -98,11 +98,12 @@ def compute_distances(mixture: MixtureFitState) -> Array:
     return cosine_distances
 
 def matrix_dbscan(D: Array, weights: Array, r: Array, eps: ArrayLike,
-                  min_probability_mass: ArrayLike) -> CoarseGraining:
+                  min_probability_mass: ArrayLike,
+                  connectivity="expm") -> CoarseGraining:
     """
     Vectorized DBSCAN applied to the distance matrix D for weighted samples.
 
-
+    
     Parameters
     ----------
     D : the precomputed distance matrix, assumed to be symmetric and positive-definite.
@@ -110,28 +111,34 @@ def matrix_dbscan(D: Array, weights: Array, r: Array, eps: ArrayLike,
     r : the responsibility of each mixture component for  each observation
     eps : the epsilon parameter for DBSCAN.
     min_probability mass : the minimum total weight of a point to be considered as a core sample
+    connectivity : (default 'expm', options ('expm', 'power')) whether to compute connected components
+    with the matrix exponential or a matrix power. 
 
     Returns
     -------
     CoarseGraining
     """
     
-    # note that this works as a coarse-graining matrix 
-    # because jnp.argmax will returns the first index
-    # in the event of a tie
+    # Identify core points using the neighborhood density
     N = neighborhood_matrix(D, eps)
     w_N = N.dot(weights)
     core_mask = jnp.heaviside(w_N - min_probability_mass, 1)
     core_and_gate = jnp.outer(core_mask, core_mask)
-    # core adjacency matrix
+
+    # Adjacency matrix of core points
     A_core = core_and_gate.at[jnp.diag_indices_from(core_and_gate)].set(0) * N
-    # matrix exponential 
-    C_core = jnp.heaviside(jax.scipy.linalg.expm(A_core, max_squarings=48), 0)
-    symmetrize = lambda X: X + X.T
+
+    # Compute connected components of core point graph using the matrix exponential.
+    # This would be a bad idea if we were doing this in series, but this is good
+    # for use with vmap.
+    if connectivity == "power":
+        C_core = jnp.heaviside(jnp.linalg.matrix_power(A_core, core_mask.sum()-1), 0)
+    elif connectivity == "expm":
+        C_core = jnp.heaviside(jax.scipy.linalg.expm(A_core, max_squarings=48), 0)
     
+    symmetrize = lambda X: X + X.T
     one_core_mask = symmetrize(jnp.outer(core_mask, 1-core_mask))
     one_core_mask = one_core_mask.at[jnp.diag_indices_from(one_core_mask)].set(0)
-    D_border_core = one_core_mask*D*N
     A_border_core = jnp.heaviside(one_core_mask*N, 0) * D
 
     # mask to keep only the minimum distance in the case of ambiguity
@@ -153,16 +160,20 @@ def matrix_dbscan(D: Array, weights: Array, r: Array, eps: ArrayLike,
     density_matrix = density_matrix / jnp.trace(density_matrix)
     p_new = r_new.mean(axis=0)
     
-    # gives the noise points a value of +1 and others -1 for the purposes of sorting by probability,
+    # gives the "noise" points a value of +1 and others -1 for the purposes of sorting by probability,
     # ensuring that noise points are the -1 entry in the array
     noise_sign = 2*(jnp.heaviside(C_all.dot(noise_mask), 0) - 0.5)
     ix_sort = jnp.argsort(p_new*noise_sign)
+
+    # Order conformations from most to least probable
     C_all = C_all[ix_sort,:]
     p_new = p_new[ix_sort]
     
     
     S = entr(p_new).sum()
-    S_vn = ee.S_vn(density_matrix)
+    # von Neumman entropy, by analogy with quantum density matrics
+    # can be compared to S; these should be close for good clusterings
+    S_vn = ee.S_vn(density_matrix) 
     S_pos = ee.S_posterior_mean_std(p_new * N_obs)
     return CoarseGraining(C_all, C_core, C_non_noise, p_new, S, S_vn, S_pos[0], S_pos[1], eps, min_probability_mass, density_matrix)
     

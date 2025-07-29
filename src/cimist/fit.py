@@ -176,8 +176,10 @@ def main():
     D = cst.ci.dbscan.compute_distances(mixture_state)
     weights = mixture_state.r.mean(axis=1)
 
-    states = vmap(cst.ci.dbscan.dbscan_eps_std)(D, weights, mixture_state.r)
-    tree = cst.MIST.from_residue_states(states, [str(r) for r in data.residues], prior=args.prior, uncertainty=True)
+    compute_states = time_and_message("Determined residue conformations", vmap(cst.ci.dbscan.dbscan_eps_std))
+    states = compute_states(D, weights, mixture_state.r)
+    build_tree = time_and_message("Calculated MIs and inferred maximimum information spanning tree", cst.MIST.from_residue_states)
+    tree = build_tree(states, [str(r) for r in data.residues], prior=args.prior, uncertainty=True)
     fname = output_prefix + "RESULTS_ciMIST.h5"
 
     with open(fname.replace(".h5", ".pkl"), "wb") as f:
@@ -188,6 +190,8 @@ def main():
     cst.pymol.tree_cartoon(tree, reference_structure, output_prefix + "pymol" + os.sep)
     cst.io.save_coarse_graining_h5(states, fname)
     cst.io.save_VMM_h5(mixture_state, fname)
+    
+
     return None
 
 if __name__ == "__main__":

@@ -69,7 +69,7 @@ def tree_cartoon(tree, protein_structure, savedir,
         )
         # define color for tree edge
         color_name = f"I_{a1}_{a2}"
-        I = tree.edges[u,v]["I_pos_mean"]
+        I = tree.edges[u,v][tree._I_key]
         RGB = edge_cmap(norm(I))[:-1]
         RGB = tuple(np.format_float_positional(x, 16) for x in RGB)
                         
@@ -91,7 +91,7 @@ def tree_cartoon(tree, protein_structure, savedir,
         set_color_lines.append(f"cmd.set_color('{color_name}', {RGB})\n")
         
     for n, r in zip(tree.nodes(), CA_only.topology.residues):
-        entropy_ = tree.nodes[n]["S_pos_mean"]
+        entropy_ = tree.nodes[n][tree._S_key]
         set_q_lines.append(
             f"cmd.alter('resi {r.resSeq} and name CA', 'q={entropy_}')\n" )
         
