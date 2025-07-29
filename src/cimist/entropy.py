@@ -178,7 +178,7 @@ def I_hs(n_xy, beta,):
     See:
         - Equation 16 in reference [1]
     """
-    
+    raise NotImplementedError()
     n_x = n_xy.sum(axis=1)
     p_x = n_x / n_x.sum()
     n_y = n_xy.sum(axis=0)
