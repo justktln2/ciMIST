@@ -27,5 +27,6 @@ dependencies = [
 ]
 
 [project.scripts]
+ci-mist = "cimist.fit:main"
 cimist-fit = "cimist.fit:main"
 mpnn-mist = "cimist.mpnn:main"

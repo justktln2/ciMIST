@@ -125,6 +125,7 @@ def main():
     if not os.path.exists(output_prefix):
         os.mkdir(output_prefix)
 
+    
     def make_keys(seed):
         return jax.random.split(jax.random.PRNGKey(seed), data.cloud_mask.shape[0])
     
@@ -186,7 +187,14 @@ def main():
         pkl.dump(tree, f)
 
     cst.io.save_tree_h5(tree, fname)
+
+    import shutil
+    ANALYSIS_PATH = cst.__path__[0] + os.sep + "templates/analysis_template.ipynb"
+    shutil.copy(ANALYSIS_PATH, output_prefix + "analysis_template.ipynb")
+    logging.info("copied analysis template to output directory.")
     
+    
+
     cst.pymol.tree_cartoon(tree, reference_structure, output_prefix + "pymol" + os.sep)
     cst.io.save_coarse_graining_h5(states, fname)
     cst.io.save_VMM_h5(mixture_state, fname)
