@@ -109,7 +109,7 @@ def main():
     dmpnn_model = dmpnn.mk_mpnn_ensemble_model(weights=args.weights, dropout=args.dropout)
     dmpnn_model.prep_inputs(traj)
 
-    jax.clear_caches()
+    
     samples = dmpnn_model.sample(temperature=args.temperature_mpnn)
     states = cst.ci.mpnn.samples_to_states(samples)    
 

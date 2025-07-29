@@ -98,7 +98,8 @@ def compute_distances(mixture: MixtureFitState) -> Array:
     return cosine_distances
 
 def matrix_dbscan(D: Array, weights: Array, r: Array, eps: ArrayLike,
-                  min_probability_mass: ArrayLike) -> CoarseGraining:
+                  min_probability_mass: ArrayLike,
+                  connectivity="expm") -> CoarseGraining:
     """
     Vectorized DBSCAN applied to the distance matrix D for weighted samples.
 
@@ -110,6 +111,8 @@ def matrix_dbscan(D: Array, weights: Array, r: Array, eps: ArrayLike,
     r : the responsibility of each mixture component for  each observation
     eps : the epsilon parameter for DBSCAN.
     min_probability mass : the minimum total weight of a point to be considered as a core sample
+    connectivity : (default 'expm', options ('expm', 'power')) whether to compute connected components
+    with the matrix exponential or a matrix power. 
 
     Returns
     -------
@@ -128,8 +131,10 @@ def matrix_dbscan(D: Array, weights: Array, r: Array, eps: ArrayLike,
     # Compute connected components of core point graph using the matrix exponential.
     # This would be a bad idea if we were doing this in series, but this is good
     # for use with vmap.
-    C_core = jnp.heaviside(jax.scipy.linalg.expm(A_core, max_squarings=48), 0)
-    
+    if connectivity == "power":
+        C_core = jnp.heaviside(jnp.linalg.matrix_power(A_core, core_mask.sum()-1), 0)
+    elif connectivity == "expm":
+        C_core = jnp.heaviside(jax.scipy.linalg.expm(A_core, max_squarings=48), 0)
     
     symmetrize = lambda X: X + X.T
     one_core_mask = symmetrize(jnp.outer(core_mask, 1-core_mask))
