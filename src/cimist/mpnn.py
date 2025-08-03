@@ -52,6 +52,9 @@ Options are:
     
 Note that of these options, only 'haldane' and 'percs' add the same total number of pseudocounts to each distribution."""
                         )
+    parser.add_argument("--mpnn_batch_size", type=int, default=500,
+    help="""Batch size (in number of trajectory frames) to disatch to ProteinMPNN via jax.vmap. Should be set depending on available memory.
+    DEFAULT: 500.""")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -105,7 +108,7 @@ def main():
 
     traj = cst.io.load_traj(args.trajectory, args.topology)
 
-    dmpnn_model = dmpnn.mk_mpnn_ensemble_model(weights=args.weights, dropout=args.dropout)
+    dmpnn_model = dmpnn.mk_mpnn_ensemble_model(weights=args.weights, dropout=args.dropout, batch_size=args.mpnn_batch_size)
     dmpnn_model.prep_inputs(traj)
 
     
@@ -116,6 +119,11 @@ def main():
     residue_names = list([str(t) for t in traj.topology.residues])
     tree = build_tree(states, residue_names, prior=args.prior, uncertainty=True)
     fname = output_prefix + "RESULTS_mpnnMIST.h5"
+
+    import shutil
+    ANALYSIS_PATH = cst.__path__[0] + os.sep + "templates/analysis_template.ipynb"
+    shutil.copy(ANALYSIS_PATH, output_prefix + "analysis_template.ipynb")
+    logging.info("copied analysis template to output directory.")
 
     
     cst.pymol.tree_cartoon(tree, reference_structure, output_prefix + "pymol" + os.sep)
