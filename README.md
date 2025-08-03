@@ -8,12 +8,28 @@
 ## About
 ciMIST is a Python tool for inferring predictive models of conformational entropy from molecular dynamics simulations.
 ciMIST infers conformations of single residues and models their global statistics using the maximum information spanning tree approach.
-The output of ciMIST is a thermodynamic network model that makes predictions about conformational entropy at local and global scales, including with uncertainty estimation.
-[You can read about ciMIST in our preprint](https://www.biorxiv.org/content/10.1101/2025.05.28.656549v2), where we demonstrate good agreement between our calculated entropies and multiple experimental measurements.
+The output of ciMIST is a thermodynamic network model that makes predictions about conformational entropy at local and global scales with Bayesian uncertainty estimation.
+[You can read about ciMIST in our preprint](https://www.biorxiv.org/content/10.1101/2025.05.28.656549v2). In the preprint, we show that ciMIST can
+
+- predict global protein conformational entropies consistent with experiment without any fitting to experimental data
+- predict local entropies consistent with experimentally-probed dynamics (NMR, HDX)
+- identify allosteric hotspots consistent with mutagenesis
+- provide thermodynamically quantifiable insight into mechanisms hidden in conformational entropy
+- facilitate the visual interpretation of molecular dynamics trajectories
+
+### How it works
+1. The trajectory is transformed to internal coordinates with [nerfax](https://github.com/PeptoneLtd/nerfax).
+2. Residue configurational probability densities are estimated with von Mises mixture models.
+3. Mixture components are clustered using a vectorized implementation of DBSCAN, producing residue conformations.
+4. From these, residue conformational entropies and mutual informations are estimated.
+5. The Chow-Liu (maximum mutual information spanning tree) algorithm is used for network inference.
+6. Entropies are calculated from the network.
+
+Most of this is implemented in JAX, but some of the tree handling is done in networkX.
 
 ## Installation
 Clone this repository using `git clone https://github.com/justktln2/ciMIST.git .`
-After downloading, navigate to the directory containing ciMIST and run the terminal command.
+After downloading, navigate to the directory containing ciMIST and run the terminal command:
 ```
 python pip install -m .
 ```
@@ -25,7 +41,7 @@ Python requirements are listed in `pyproject.toml`.
 We have typically run ciMIST on CPUs with between 256GB and 512GB of RAM.
 
 ## Recommendations
-In our experience, ciMIST has given good results on between 5 and 10 microseconds of molecular dynamics data sampled at frequences of once or twice per nanosecond for proteins up to about 300 amino acids long.
+ciMIST has given good quantitative results on between 5 and 10 microseconds of molecular dynamics data sampled at frequencies of once or twice per nanosecond for proteins up to about 300 amino acids long. However, we have found it to be a useful visual aid to the interpretation of trajectories of any length.
 
 ## Usage
 ciMIST ships with a command line tool `ci-mist`. An analysis template illustrating basic aspects of the API is provided in the outputs of each run in the form of a Jupyter notebook.
