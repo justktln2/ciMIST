@@ -12,7 +12,7 @@ class ResidueStates(NamedTuple):
     state_counts: Array
 
 def samples_to_states(mpnn_samples):
-    states_traj = jnp.array(mpnn_samples["S"].argmax(axis=1))
+    states_traj = jnp.array(mpnn_samples["S"].argmax(axis=-1)).T
     n_states = 20*jnp.ones((states_traj.shape[0],1))
     _, counts = vmap(partial(jnp.unique,
                 size=20, fill_value=-1, return_counts=True

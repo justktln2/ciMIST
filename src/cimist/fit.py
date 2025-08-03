@@ -9,6 +9,7 @@ import argparse
 import logging
 from typing import List, NamedTuple
 from functools import partial, wraps
+from cimist.utils.chunked_vmap import vmap_chunked as cvmap
 
 def parse_args():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
@@ -41,6 +42,8 @@ Options are:
     
 Note that of these options, only 'haldane' and 'percs' add the same total number of pseudocounts to each distribution."""
                         )
+    parser.add_argument("--VMM_BATCH_SIZE", type=int, default=100,
+                        help="Default: 100. Maximum number of residues in each vmap batch for von Mises mixture models. Increase or decrease based on memory availibility.")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -144,8 +147,8 @@ def main():
     )
     
     logging.info("Beginning von Mises mixture models fits with expectation-maximization...")
-    step_if_converged = jit(partial(cst.ci.vmm.step_if_not_converged, gtol=1e-3, gmaxiter=500))
-    _advance = vmap(step_if_converged)
+    step_if_not_converged = jit(partial(cst.ci.vmm.step_if_not_converged, gtol=1e-3, gmaxiter=500))
+    _advance = vmap(step_if_not_converged)
     num_residues = len(mixture_state.converged)
     num_converged = jnp.sum(mixture_state.converged)
     for i in range(100):
@@ -175,6 +178,9 @@ def main():
                                            r=new_r)
     
     D = cst.ci.dbscan.compute_distances(mixture_state)
+    with open(output_prefix + "component_distance.pkl", "wb") as f:
+        pkl.dump(D, f)
+
     weights = mixture_state.r.mean(axis=1)
 
     compute_states = time_and_message("Determined residue conformations", vmap(cst.ci.dbscan.dbscan_eps_std))

@@ -5,7 +5,6 @@ Author: Kaitlin
 
 
 import os
-os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = ".10"
 import argparse
 import logging
 from typing import List, NamedTuple
@@ -110,7 +109,7 @@ def main():
     dmpnn_model.prep_inputs(traj)
 
     
-    samples = dmpnn_model.sample(temperature=args.temperature_mpnn)
+    samples = dmpnn_model.sample_minimal(temperature=args.temperature_mpnn)
     states = cst.ci.mpnn.samples_to_states(samples)    
 
     build_tree = time_and_message("Calculated MIs and inferred maximimum information spanning tree", cst.MIST.from_residue_states)
