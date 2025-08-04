@@ -92,9 +92,10 @@ This is highly experimental, and more thoughtful batching of calculations is nee
 
 ```
 usage: mpnn-mist [-h] [-t TRAJECTORY] [-s TOPOLOGY] [-o OUTPUT_PREFIX]
-                 [--temperature TEMPERATURE] [--weights {soluble,original}]
+                 [--temperature TEMPERATURE] [--weights {original,soluble}]
                  [--dropout DROPOUT] [--temperature_mpnn TEMPERATURE_MPNN]
-                 [--seed SEED] [--prior {percs,jeffreys,laplace,haldane}]
+                 [--seed SEED] [--prior {haldane,laplace,jeffreys,percs}]
+                 [--mpnn_batch_size MPNN_BATCH_SIZE]
 
 ProteinMPNN-MIST.
     Run maximum information spanning tree on a molecular dynamics ensemble using ProteinMPNN inverse folding to determine residue states.
@@ -113,13 +114,13 @@ options:
                         The prefix for the output directory.
   --temperature TEMPERATURE
                         Temperature parameter for ProteinMPNN
-  --weights {soluble,original}
+  --weights {original,soluble}
                         ProteinMPNN weights to use.
   --dropout DROPOUT     'dropout' argument for ProteinMPNN
   --temperature_mpnn TEMPERATURE_MPNN
                         Sampling temperature for ProteinMPNN
   --seed SEED           Random seed.
-  --prior {percs,jeffreys,laplace,haldane}
+  --prior {haldane,laplace,jeffreys,percs}
                         Prior to use for residue entropy and pairwise mutual information estimation with the Dirichlet distribution.
                         Each prior corresponds to adding the same number of pseudocounts to each conformation.
                         Options are:
@@ -129,4 +130,7 @@ options:
                             -'laplace' : 1 pseudocount
                             
                         Note that of these options, only 'haldane' and 'percs' add the same total number of pseudocounts to each distribution.
+  --mpnn_batch_size MPNN_BATCH_SIZE
+                        Batch size (in number of trajectory frames) to disatch to ProteinMPNN via jax.vmap. Should be set depending on available memory.
+                            DEFAULT: 500.
 ```
