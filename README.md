@@ -83,12 +83,12 @@ The program will create a directory of your choosing containing pre-generated sc
 These visualizations have the option to be color-coded using the [cmocean](https://matplotlib.org/cmocean/) or [cmasher](https://github.com/1313e/CMasher) colormaps, which provide nice contrasts for protein structures.
 In order to access these in PyMOL, you will need to add a line to your `.pymolrc` file that runs the script `pymol_palettes/pymol_palettes.py` included with ciMIST.
 
-## mpnnMIST (WARNING: highly experimental)
+## mpnnMIST (experimental)
 We have added the option to infer residue states using the ColabFold implementation of ProteinMPNN. This allows residue conformations to be identified with amino acids, in some sense. 
 
 To use this option, you will need to [install my fork of ColabDesign](https://github.com/justktln2/ColabDesign).
 
-This is highly experimental, and more thoughtful batching of calculations is needed before it will be possible to profile how this performs on the systems studied in our paper.
+This is experimental code whose predictive performance has not been validated.
 
 ```
 usage: mpnn-mist [-h] [-t TRAJECTORY] [-s TOPOLOGY] [-o OUTPUT_PREFIX]
