@@ -31,7 +31,7 @@ Most of this is implemented in JAX, but some of the tree handling is done in net
 Clone this repository using `git clone https://github.com/justktln2/ciMIST.git .`
 After downloading, navigate to the directory containing ciMIST and run the terminal command:
 ```
-python pip install -m .
+python -m pip install .
 ```
 
 ## Requirements (software)
