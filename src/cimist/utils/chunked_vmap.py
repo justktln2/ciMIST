@@ -139,7 +139,7 @@ def scan_append_reduce(f, x, append_cond, op=_tree_add):
     # to avoid having to rely on xla/llvm to optimize the overhead away
     if jax.tree_util.tree_leaves(x)[0].shape[0] == 1:
         return _multimap(
-            lambda c, x: jnp.expand_dims(x, 0) if c else x, append_cond, f(x0)
+            lambda c, x: jax.tree_util.tree_map(lambda leaf: jnp.expand_dims(leaf, 0), x) if c else x, append_cond, f(x0)
         )
 
     # the original idea was to use pytrees, however for now just operate on the return value tuple

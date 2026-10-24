@@ -1,6 +1,8 @@
 """
 Utilities for von Mises mixture models.
 """
+from functools import partial
+
 import numpy as np
 import scipy.linalg #needs to be here for now for ridiculous install problem reasons
 
@@ -139,13 +141,20 @@ def m_step(
     # Get the closed-form maximum expected log likelihood estimate for mu
     mu = mu_mle(theta, r)
 
+    # Fixed responsibilities and means need only these statistics during BFGS.
+    weighted_cosine = ((r.T @ jnp.cos(theta)) * jnp.cos(mu)
+                       + (r.T @ jnp.sin(theta)) * jnp.sin(mu))
+    weight_term = jnp.sum(xlogy(w, w))
+
     # define the loss function for kappa and optimize using bfgs
     def negative_ell(p):
         # expected log likelihood of the kappa parameters
         _p = p.reshape(kappa.shape)
         kappas = scale_kappa(_p)
         # log likelihood per observation
-        return -expected_log_likelihood(theta, mu, kappas, r, w, mask) / M
+        terms = jnp.where(mask, kappas * weighted_cosine
+                          - w[:, None] * jnp.log(2*jnp.pi*i0(kappas)), 0.0)
+        return -(jnp.sum(terms) + weight_term) / M
     
     x0 = kappa.flatten()
     solver_options = dict(gtol=gtol, maxiter=maxiter, line_search_maxiter=line_search_maxiter)
@@ -312,6 +321,7 @@ def warm_start(theta, mixture_fit, mask, key, n_components=100, maxiter=100, ato
     return state
 
 
+@partial(jit, static_argnames=("n_clusters",))
 def spherical_kmeans_plus_plus(theta, n_clusters, key):
     # adaptation of kmeans plus_plus to the unit sphere
     """
@@ -335,33 +345,23 @@ def spherical_kmeans_plus_plus(theta, n_clusters, key):
     
     """
     keys = jax.random.split(key, n_clusters) # 100 x 2 array
-    ix = jax.random.randint(keys[0], (1,), 0, theta.shape[0])
+    first = jax.random.randint(keys[0], (1,), 0, theta.shape[0])[0]
     
     inv_norm = 1/jnp.linalg.norm(theta, axis=1)
     #theta_hat = jnp.diag(1/norm) @ theta # SAMPLES x 28, THIS CAUSES MEMORY PROBLEMS
     theta_hat = theta * inv_norm[:, jnp.newaxis]
 
-    normalized_cluster_centers = theta_hat[ix].T
-    ixs = [ix]
-    
-    for k in keys[1:]:
-        # compute cosine distances to cluster centers
-        cosine_distances = 1 - theta_hat @ normalized_cluster_centers
-        
-        # probability of choosing cluster center is proportional to min_distance**2
-        min_distance = jnp.min(cosine_distances, axis=1)
-        log_p = jnp.where(min_distance > 1e-8,
-                          2*jnp.log(min_distance),
-                          -jnp.inf # probability of zero for something already chosen
-                         ) # (un-normalized) log probability of choosing index
-        ix = jax.random.categorical(k, log_p, shape=(1,))
+    nearest = 1 - theta_hat @ theta_hat[first]
 
-        new_center = theta_hat[ix].T
+    def add_center(nearest, draw_key):
+        log_p = jnp.where(nearest > 1e-8, 2*jnp.log(nearest), -jnp.inf)
+        ix = jax.random.categorical(draw_key, log_p, shape=(1,))[0]
+        # The old centers' minimum is unchanged when one new center is added.
+        nearest = jnp.minimum(nearest, 1 - theta_hat @ theta_hat[ix])
+        return nearest, ix
 
-        normalized_cluster_centers = jnp.hstack((normalized_cluster_centers, new_center)).squeeze()
-        ixs.append(ix)
-        
-    ixs = jnp.concatenate(ixs)
+    _, remaining = jax.lax.scan(add_center, nearest, keys[1:])
+    ixs = jnp.concatenate((first[None], remaining))
     centers = theta[ixs]
     return centers
 

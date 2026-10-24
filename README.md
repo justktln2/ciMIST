@@ -134,3 +134,19 @@ options:
                         Batch size (in number of trajectory frames) to disatch to ProteinMPNN via jax.vmap. Should be set depending on available memory.
                             DEFAULT: 500.
 ```
+
+
+### HDF5 compression
+
+HDF5 output uses lossless gzip level 1 plus shuffle for nonempty numeric
+arrays by default. Use `--hdf5_compression none` for uncompressed output;
+Python save functions accept `compression=None`. Existing HDF5 readers work
+without changes.
+
+
+### Memory defaults
+
+The `ci-mist` CLI defaults to sparse probability storage, pair batches of 128,
+and EM batches covering 8 residues. Run normally to use these settings;
+opt into dense arrays/pickles with `--probability_storage dense`.
+Load default sparse pickles with `cimist.io.load_sparse_tree(stream)`.

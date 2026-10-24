@@ -9,9 +9,15 @@ import argparse
 import logging
 from typing import List, NamedTuple
 from functools import partial, wraps
-from cimist.utils.chunked_vmap import vmap_chunked as cvmap
 
-def parse_args():
+def positive_batch_size(value):
+    size = int(value)
+    if size <= 0:
+        raise argparse.ArgumentTypeError("VMM batch size must be a positive integer")
+    return size
+
+
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
     parser.add_argument("-t", "--trajectory", type=str,
@@ -42,9 +48,26 @@ Options are:
     
 Note that of these options, only 'haldane' and 'percs' add the same total number of pseudocounts to each distribution."""
                         )
-    parser.add_argument("--VMM_BATCH_SIZE", type=int, default=100,
-                        help="Default: 100. Maximum number of residues in each vmap batch for von Mises mixture models. Increase or decrease based on memory availibility.")
-    return parser.parse_args()
+    parser.add_argument("--VMM_BATCH_SIZE", type=positive_batch_size, default=8,
+                        help="Default: 8. Maximum residues per EM update batch only. Must be positive; a size at least the residue count uses the full map. Smaller batches can reduce EM temporary memory; initialization and other stages are unchanged.")
+    def positive_pair_batch_size(value):
+        size = int(value)
+        if size <= 0:
+            raise argparse.ArgumentTypeError("PAIR_BATCH_SIZE must be positive")
+        return size
+
+    parser.add_argument("--PAIR_BATCH_SIZE", type=positive_pair_batch_size, default=128,
+                        help="Maximum residue pairs evaluated together; default: 128. Set at least the pair count to evaluate all pairs together.")
+    parser.add_argument("--probability_storage", choices=("dense", "sparse"), default="sparse",
+                        help="Default: sparse, exact probabilities with reduced graph memory. Select dense for legacy probability arrays/pickles.")
+    parser.add_argument("--skip_converged_batches", action="store_true", default=False,
+                        help="Skip wholly converged EM batches. Can reduce CPU work but increase elapsed time; default: off.")
+    parser.add_argument("--hdf5_compression", choices=("gzip", "none"), default="gzip",
+                        help="HDF5 numeric arrays: lossless gzip level 1 + shuffle (default), or none.")
+    args = parser.parse_args(argv)
+    if args.probability_storage == "sparse" and args.PAIR_BATCH_SIZE is None:
+        parser.error("Sparse probability storage requires --PAIR_BATCH_SIZE")
+    return args
 
 if __name__ == "__main__":
     # some setup so we don't have to wait for imports to see if the inputs are bad
@@ -57,6 +80,8 @@ t0 = time.time()
 import jax
 jax.config.update('jax_enable_x64', True)
 import cimist as cst
+from cimist.utils.chunked_vmap import apply_chunked
+from cimist.utils.chunked_vmap import vmap_chunked as cvmap
 import dill as pkl
 from jax import jit, vmap, Array
 import jax.numpy as jnp
@@ -148,7 +173,18 @@ def main():
     
     logging.info("Beginning von Mises mixture models fits with expectation-maximization...")
     step_if_not_converged = jit(partial(cst.ci.vmm.step_if_not_converged, gtol=1e-3, gmaxiter=500))
-    _advance = vmap(step_if_not_converged)
+    if args.skip_converged_batches:
+        step_batch = vmap(step_if_not_converged)
+
+        def keep_batch(theta, state):
+            return state
+
+        def advance_batch(theta, state):
+            return jax.lax.cond(jnp.all(state.converged), keep_batch, step_batch, theta, state)
+
+        _advance = apply_chunked(advance_batch, in_axes=(0, 0), chunk_size=args.VMM_BATCH_SIZE)
+    else:
+        _advance = cvmap(step_if_not_converged, in_axes=(0, 0), chunk_size=args.VMM_BATCH_SIZE)
     num_residues = len(mixture_state.converged)
     num_converged = jnp.sum(mixture_state.converged)
     for i in range(100):
@@ -186,13 +222,18 @@ def main():
     compute_states = time_and_message("Determined residue conformations", vmap(cst.ci.dbscan.dbscan_eps_std))
     states = compute_states(D, weights, mixture_state.r)
     build_tree = time_and_message("Calculated MIs and inferred maximimum information spanning tree", cst.MIST.from_residue_states)
-    tree = build_tree(states, [str(r) for r in data.residues], prior=args.prior, uncertainty=True)
+    tree = build_tree(states, [str(r) for r in data.residues], prior=args.prior, uncertainty=True,
+                      pair_batch_size=args.PAIR_BATCH_SIZE, probability_storage=args.probability_storage)
     fname = output_prefix + "RESULTS_ciMIST.h5"
 
     with open(fname.replace(".h5", ".pkl"), "wb") as f:
-        pkl.dump(tree, f)
+        if args.probability_storage == "sparse":
+            cst.io.dump_sparse_tree(tree, f)
+        else:
+            pkl.dump(tree, f)
 
-    cst.io.save_tree_h5(tree, fname)
+    cst.io.save_tree_h5(tree, fname,
+        compression=None if args.hdf5_compression == "none" else args.hdf5_compression)
 
     import shutil
     ANALYSIS_PATH = cst.__path__[0] + os.sep + "templates/analysis_template.ipynb"
@@ -202,8 +243,10 @@ def main():
     
 
     cst.pymol.tree_cartoon(tree, reference_structure, output_prefix + "pymol" + os.sep)
-    cst.io.save_coarse_graining_h5(states, fname)
-    cst.io.save_VMM_h5(mixture_state, fname)
+    cst.io.save_coarse_graining_h5(states, fname,
+        compression=None if args.hdf5_compression == "none" else args.hdf5_compression)
+    cst.io.save_VMM_h5(mixture_state, fname,
+        compression=None if args.hdf5_compression == "none" else args.hdf5_compression)
     
 
     return None
