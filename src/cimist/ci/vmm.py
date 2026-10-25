@@ -5,14 +5,24 @@ import numpy as np
 import scipy.linalg #needs to be here for now for ridiculous install problem reasons
 
 from typing import NamedTuple, Optional, Union
+from functools import partial
 
 import jax.numpy as jnp
 from jax import Array, jit, vmap
 import jax
 from jax.lax import cond, fori_loop
-from jax.scipy.special import logsumexp, i0, xlogy
+from jax.scipy.special import logsumexp, i0, xlogy, i0e, i1e
 from jax.nn import softmax, log_softmax
 from jax.scipy.optimize import minimize
+
+class ScalarSolveResult(NamedTuple):
+    success: Array
+    status: Array
+    nit: Array
+    nfev: Array
+    njev: Array
+    roundoff_clips: Array
+
 
 class MixtureFitState(NamedTuple):
          n_components: int
@@ -113,7 +123,7 @@ def mu_mle(theta: Array, r: Array):
     denom = jnp.sqrt(jnp.real(num * num.conjugate()))
     return jnp.where(denom > 0, jnp.angle(num / denom), 0)
 
-def m_step(
+def _m_step_bfgs(
     theta: Array,
     mu: Array,
     kappa: Array,
@@ -155,47 +165,133 @@ def m_step(
 
     return map_to_mpi_pi(mu), scale_kappa(kappa), jnp.log(w / w.max()), result
 
-def advance_em(theta: Array,
-               state: MixtureFitState, 
-               steps: int=10,
-               gtol=1e-3,
-               gmaxiter=500) -> MixtureFitState:
+def _m_step_newton(
+    theta: Array,
+    mu: Array,
+    kappa: Array,
+    r: Array,
+    mask: Array,
+    gtol=1e-3,
+    maxiter=100,
+    line_search_maxiter=10,
+    min_kappa=10.0,
+    max_kappa=600.0):
+
+    """Solve the separable S1 concentration M-step within the original bounds.
+
+    Only small component-by-angle arrays enter the root iterations. Statuses:
+    0 success, 1 iteration limit, 2 invalid input, 3 accepted resultant roundoff.
+    ``gtol`` and ``line_search_maxiter`` apply only to the BFGS solver.
     """
-    Advance the EM algorithm by n_iter steps, starting from the given state.
+    if theta.dtype != r.dtype or theta.dtype != kappa.dtype or theta.dtype not in (jnp.float32, jnp.float64):
+        raise TypeError("Newton theta, responsibilities and concentrations must share float32 or float64 dtype")
+    # helper functions
+    def map_to_mpi_pi(x):
+        x_new = jnp.mod(x, 2*jnp.pi)
+        return jnp.where(mask, x_new - 2*jnp.pi*(x_new > jnp.pi), 0)
 
-    Parameters
-    ----------
-    theta : TYPE
-        DESCRIPTION.
-    state : TYPE
-        DESCRIPTION.
-    n_iter : TYPE, optional
-        DESCRIPTION. The default is 10.
-    atol : TYPE, optional
-        DESCRIPTION. The default is 1e-3.
-    gtol : TYPE, optional
-        DESCRIPTION. The default is 1e-2.
-    gmaxiter : TYPE, optional
-        DESCRIPTION. The default is None.
+    def scale_kappa(kappa):
+        return jnp.where(mask, jnp.minimum(jnp.maximum(min_kappa, kappa), max_kappa), 0)
 
-    Returns
-    -------
-    state : TYPE
-        DESCRIPTION.
+    w = r.sum(axis=0)
 
+    # Get the closed-form maximum expected log likelihood estimate for mu
+    mu = mu_mle(theta, r)
+
+    # Same separable bounded objective; tighter solver changes the EM path.
+    C = (r.T @ jnp.cos(theta)) * jnp.cos(mu) + (r.T @ jnp.sin(theta)) * jnp.sin(mu)
+    active = jnp.broadcast_to(mask, kappa.shape) & (w[:, None] > 0)
+    R = C / jnp.where(w[:, None] > 0, w[:, None], 1.)
+    finite = (jnp.isfinite(theta).all() & jnp.isfinite(r).all()
+              & jnp.isfinite(kappa).all() & (r >= 0).all()
+              & jnp.isfinite(R).all() & jnp.isfinite(w).all() & (w.sum() > 0)
+              & jnp.isfinite(min_kappa) & jnp.isfinite(max_kappa)
+              & (min_kappa > 0) & (max_kappa >= min_kappa))
+    invalid = ~finite | jnp.any(active & (jnp.abs(R) > 1 + 64 * jnp.finfo(R.dtype).eps))
+    roundoff = jnp.sum(active & (jnp.abs(R) > 1))
+    R = jnp.clip(R, -1., 1.)
+
+    def A(x):
+        return i1e(x) / i0e(x)
+
+    lower = active & (R <= A(min_kappa))
+    upper = active & (R >= A(max_kappa))
+    interior = active & ~lower & ~upper
+    x = jnp.clip(kappa, min_kappa, max_kappa)
+    lo, hi = jnp.full_like(x, min_kappa), jnp.full_like(x, max_kappa)
+
+    # Float64 retains the validated reference tolerances; float32 needs attainable ones.
+    eps = jnp.finfo(R.dtype).eps
+    root_tol = jnp.maximum(3e-15, 8 * eps)
+
+    def residual(x, lo, hi):
+        width_tol = jnp.maximum(1e-10, 8 * eps * jnp.abs(x))
+        return interior & (jnp.abs(A(x) - R) > root_tol) & (hi - lo > width_tol)
+
+    def condition(state):
+        iteration, x, lo, hi = state
+        return (iteration < jnp.minimum(maxiter, 100)) & jnp.any(residual(x, lo, hi)) & ~invalid
+
+    def update(state):
+        iteration, x, lo, hi = state
+        a = A(x)
+        f = a - R
+        todo = residual(x, lo, hi)
+        lo = jnp.where(todo & (f < 0), x, lo)
+        hi = jnp.where(todo & (f >= 0), x, hi)
+        derivative = 1 - a / x - a * a
+        step = x - f / derivative
+        step = jnp.where((derivative > 0) & jnp.isfinite(step) & (step > lo) & (step < hi),
+                         step, (lo + hi) / 2)
+        return iteration + 1, jnp.where(todo, step, x), lo, hi
+
+    nit, x, lo, hi = jax.lax.while_loop(condition, update, (jnp.array(0), x, lo, hi))
+    failed = jnp.any(residual(x, lo, hi)) | invalid
+    solved = jnp.where(lower, min_kappa, jnp.where(upper, max_kappa, x))
+    solved = jnp.where(failed, kappa, solved)
+    # Status 3 records accepted roundoff above unit resultant; 2 rejects invalid input.
+    status = jnp.where(invalid, 2, jnp.where(failed, 1, jnp.where(roundoff > 0, 3, 0)))
+    result = ScalarSolveResult(~failed, status, nit, nit + 1, nit, roundoff)
+    return map_to_mpi_pi(mu), scale_kappa(solved), jnp.log(w / w.max()), result
+
+def m_step(theta: Array, mu: Array, kappa: Array, r: Array, mask: Array,
+           gtol=1e-3, maxiter=100, line_search_maxiter=10,
+           min_kappa=10.0, max_kappa=600.0, solver="newton"):
+    """Update means, concentrations and weights; make ``solver`` static under JIT.
+
+    ``bfgs`` preserves the original clipped-objective implementation. ``newton``
+    solves its bounded concentration objective more tightly and can change fits.
+    Both return optimizer diagnostics as the fourth result; inspect ``success``.
     """
+    if solver == "newton":
+        solve = _m_step_newton
+    elif solver == "bfgs":
+        solve = _m_step_bfgs
+    else:
+        raise ValueError("solver must be 'newton' or 'bfgs'")
+    return solve(theta, mu, kappa, r, mask, gtol, maxiter,
+                 line_search_maxiter, min_kappa, max_kappa)
 
-    # advance if converged, only using the for loop if steps>1, return current state otherwise
+
+def advance_em(theta: Array, state: MixtureFitState, steps: int=10,
+               gtol=1e-3, gmaxiter=500, solver="newton") -> MixtureFitState:
+    """Advance an unconverged state by at most ``steps`` updates, then sort by weight.
+
+    ``solver`` must be static when this function is used under JIT.
+    """
     state = cond(state.converged,
                  lambda: state,
-                 lambda: fori_loop(0, steps, lambda i, s: em_step(i, theta, s), state)
-                )
-
+                 lambda: fori_loop(
+                     0, steps,
+                     lambda i, s: step_if_not_converged(theta, s, gtol, gmaxiter, solver=solver),
+                     state))
     return sort_by_weight(state)
 
+
 def is_converged(state: MixtureFitState) -> bool:
-    converged = cond(state.n_iter > 0,
-    lambda x: jnp.abs(x.log_likelihood[x.n_iter] - x.log_likelihood[x.n_iter-1])<x.atol,
+    """Compare the latest two post-update likelihoods, once both exist."""
+    converged = cond(state.n_iter > 1,
+    lambda x: jnp.abs(x.log_likelihood[x.n_iter-1] - x.log_likelihood[x.n_iter-2])<x.atol,
     lambda x: False,
     state)
     return converged
@@ -209,11 +305,13 @@ def update_r(theta: Array, state: MixtureFitState) -> MixtureFitState:
 def predict_proba(theta: Array, state: MixtureFitState) -> Array:
     return e_step(theta, state.mu, state.kappa, state.logw, state.mask)
 
-@jit
-def em_step(theta: Array, state: MixtureFitState, gtol=1e-3, gmaxiter=500) -> MixtureFitState:
+@partial(jit, static_argnames=("solver",))
+def em_step(theta: Array, state: MixtureFitState, gtol=1e-3, gmaxiter=500,
+            solver="newton") -> MixtureFitState:
     r = predict_proba(theta, state)
-    mu, kappa, logw, result = m_step(theta, state.mu, state.kappa, r, state.mask, gtol=gtol, maxiter=gmaxiter)
-    ll = mixture_log_likelihood(theta, state.mu, state.kappa, state.logw, state.mask)
+    mu, kappa, logw, result = m_step(theta, state.mu, state.kappa, r, state.mask, gtol=gtol, maxiter=gmaxiter, solver=solver)
+    # Score the parameters being returned, so convergence cannot lag an M-step.
+    ll = mixture_log_likelihood(theta, mu, kappa, logw, state.mask)
     log_likelihood = state.log_likelihood.at[state.n_iter].set(ll)
     state = state._replace(
         mu = mu,
@@ -222,28 +320,28 @@ def em_step(theta: Array, state: MixtureFitState, gtol=1e-3, gmaxiter=500) -> Mi
         log_likelihood = log_likelihood,
         r = r,
         nfevs = state.nfevs.at[state.n_iter].set(result.nfev),
-        njevs = state.nfevs.at[state.n_iter].set(result.njev),
+        # Keep the historical BFGS diagnostics for reproducible baseline output.
+        njevs = (state.nfevs if solver == "bfgs" else state.njevs).at[state.n_iter].set(result.njev),
         nits = state.nits.at[state.n_iter].set(result.nit),
         successes = state.successes.at[state.n_iter].set(result.success),
-        statuses = state.statuses.at[state.n_iter].set(result.status)
+        statuses = state.statuses.at[state.n_iter].set(result.status),
+        n_iter = state.n_iter + 1
     )
     
     converged = is_converged(state)
     
     state = state._replace(
-        n_iter = state.n_iter + 1,
         converged = converged
         )
     return state
     
-def step_if_not_converged(theta: Array, state: MixtureFitState, gtol=1e-3, gmaxiter=500):
-    def do_nothing(theta, state, gtol=1e-3, gmaxiter=500):
-        return state
-    
-    state = cond(state.converged, do_nothing, em_step,
-                 theta, state, gtol, gmaxiter
-                 )
-    return state
+def step_if_not_converged(theta: Array, state: MixtureFitState, gtol=1e-3,
+                          gmaxiter=500, solver="newton"):
+    """Apply one EM step; make ``solver`` static under JIT."""
+    return cond(state.converged,
+                lambda: state,
+                lambda: em_step(theta, state, gtol, gmaxiter, solver=solver))
+
 
 def init_random_mixture_state(theta, mask, key, n_components=100, maxiter=100, atol=1e-2):
     # initialize random mixture states using kmeans++ to set the cluster centers and 
@@ -312,6 +410,7 @@ def warm_start(theta, mixture_fit, mask, key, n_components=100, maxiter=100, ato
     return state
 
 
+@partial(jit, static_argnames=("n_clusters",))
 def spherical_kmeans_plus_plus(theta, n_clusters, key):
     # adaptation of kmeans plus_plus to the unit sphere
     """
@@ -335,33 +434,23 @@ def spherical_kmeans_plus_plus(theta, n_clusters, key):
     
     """
     keys = jax.random.split(key, n_clusters) # 100 x 2 array
-    ix = jax.random.randint(keys[0], (1,), 0, theta.shape[0])
+    first = jax.random.randint(keys[0], (1,), 0, theta.shape[0])[0]
     
     inv_norm = 1/jnp.linalg.norm(theta, axis=1)
     #theta_hat = jnp.diag(1/norm) @ theta # SAMPLES x 28, THIS CAUSES MEMORY PROBLEMS
     theta_hat = theta * inv_norm[:, jnp.newaxis]
 
-    normalized_cluster_centers = theta_hat[ix].T
-    ixs = [ix]
-    
-    for k in keys[1:]:
-        # compute cosine distances to cluster centers
-        cosine_distances = 1 - theta_hat @ normalized_cluster_centers
-        
-        # probability of choosing cluster center is proportional to min_distance**2
-        min_distance = jnp.min(cosine_distances, axis=1)
-        log_p = jnp.where(min_distance > 1e-8,
-                          2*jnp.log(min_distance),
-                          -jnp.inf # probability of zero for something already chosen
-                         ) # (un-normalized) log probability of choosing index
-        ix = jax.random.categorical(k, log_p, shape=(1,))
+    nearest = 1 - theta_hat @ theta_hat[first]
 
-        new_center = theta_hat[ix].T
+    def add_center(nearest, draw_key):
+        log_p = jnp.where(nearest > 1e-8, 2*jnp.log(nearest), -jnp.inf)
+        ix = jax.random.categorical(draw_key, log_p, shape=(1,))[0]
+        # The old centers' minimum is unchanged when one new center is added.
+        nearest = jnp.minimum(nearest, 1 - theta_hat @ theta_hat[ix])
+        return nearest, ix
 
-        normalized_cluster_centers = jnp.hstack((normalized_cluster_centers, new_center)).squeeze()
-        ixs.append(ix)
-        
-    ixs = jnp.concatenate(ixs)
+    _, remaining = jax.lax.scan(add_center, nearest, keys[1:])
+    ixs = jnp.concatenate((first[None], remaining))
     centers = theta[ixs]
     return centers
 

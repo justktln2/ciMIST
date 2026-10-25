@@ -9,9 +9,15 @@ import argparse
 import logging
 from typing import List, NamedTuple
 from functools import partial, wraps
-from cimist.utils.chunked_vmap import vmap_chunked as cvmap
 
-def parse_args():
+def positive_batch_size(value):
+    size = int(value)
+    if size <= 0:
+        raise argparse.ArgumentTypeError("batch size must be a positive integer")
+    return size
+
+
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
     parser.add_argument("-t", "--trajectory", type=str,
@@ -42,9 +48,16 @@ Options are:
     
 Note that of these options, only 'haldane' and 'percs' add the same total number of pseudocounts to each distribution."""
                         )
-    parser.add_argument("--VMM_BATCH_SIZE", type=int, default=100,
-                        help="Default: 100. Maximum number of residues in each vmap batch for von Mises mixture models. Increase or decrease based on memory availibility.")
-    return parser.parse_args()
+    parser.add_argument("--solver", choices=("newton", "bfgs"), default="newton",
+                        help="Default: newton. Safeguarded scalar Newton solves the bounded M-step; bfgs uses the original clipped objective. Newton can change scientific outputs.")
+    parser.add_argument("--VMM_BATCH_SIZE", type=positive_batch_size, default=32,
+                        help='Default: 32. Maximum residues per EM update batch only; all frames retained. Initialization and other stages are unchanged.')
+    parser.add_argument("--PAIR_BATCH_SIZE", type=positive_batch_size, default=128,
+                        help="Maximum residue pairs evaluated together; default: 128. A value at least the pair count uses the original full map. All pairs and frames are retained.")
+    parser.add_argument("--probability_storage", choices=("dense", "sparse"), default="sparse", help="Default: sparse, exact probabilities with reduced graph memory. Select dense for legacy probability arrays/pickles.")
+    parser.add_argument("--hdf5_compression", choices=("gzip", "none"), default="gzip",
+                        help="HDF5 numeric arrays: lossless gzip level 1 + shuffle (default), or none.")
+    return parser.parse_args(argv)
 
 if __name__ == "__main__":
     # some setup so we don't have to wait for imports to see if the inputs are bad
@@ -57,6 +70,7 @@ t0 = time.time()
 import jax
 jax.config.update('jax_enable_x64', True)
 import cimist as cst
+from cimist.utils.chunked_vmap import vmap_chunked as cvmap
 import dill as pkl
 from jax import jit, vmap, Array
 import jax.numpy as jnp
@@ -120,6 +134,8 @@ def main():
     logfile = output_prefix + "logging.txt"
     logging.basicConfig(filename=logfile, level=logging.INFO, filemode='w')
     logging.info("Began pipeline at " + str(today) + ".")
+    logging.info("Solver: %s; EM batch size: %s; pair batch size: %s",
+                 args.solver, args.VMM_BATCH_SIZE, args.PAIR_BATCH_SIZE)
 
     data = load_dataset(args.trajectory, args.topology)
     reference_structure = md.load(args.topology)
@@ -147,35 +163,40 @@ def main():
     )
     
     logging.info("Beginning von Mises mixture models fits with expectation-maximization...")
-    step_if_not_converged = jit(partial(cst.ci.vmm.step_if_not_converged, gtol=1e-3, gmaxiter=500))
-    _advance = vmap(step_if_not_converged)
+    step_if_not_converged = jit(partial(cst.ci.vmm.step_if_not_converged,
+                                      gtol=1e-3, gmaxiter=500, solver=args.solver))
+    _advance = cvmap(step_if_not_converged, in_axes=(0, 0), chunk_size=args.VMM_BATCH_SIZE)
     num_residues = len(mixture_state.converged)
     num_converged = jnp.sum(mixture_state.converged)
     for i in range(100):
-        if num_converged == num_residues: 
-            # i > 0 ensures we didn't start with a converged set of models 
-            # update responsibilities one last time for predicting barcodes
-            if i > 0:
-                update_r = time_and_message("Carried out final update of mixture component responsibilities",
-                vmap(cst.ci.vmm.update_r),
-                    )
-                mixture_state = update_r(data.angles, mixture_state)
-            break 
+        if num_converged == num_residues:
+            break
         print(80*"-")
         advance = time_and_message(f"Completed EM iteration {i} for all residues", _advance)
         mixture_state = advance(data.angles, mixture_state)
         num_converged = jnp.sum(mixture_state.converged)
+        if args.solver == "newton":
+            last_step = (mixture_state.n_iter - 1)[:, None]
+            successful = jnp.take_along_axis(mixture_state.successes, last_step, axis=1)[:, 0]
+            if not bool(jnp.all(successful)):
+                failed = jnp.where(~successful.astype(bool))[0].tolist()
+                statuses = jnp.take_along_axis(mixture_state.statuses, last_step, axis=1)[:, 0]
+                message = f"Newton M-step failed for residue indices {failed}; statuses {statuses[jnp.asarray(failed)].tolist()}"
+                logging.error(message)
+                raise RuntimeError(message)
         
                 
         logging.info(f"Reached convergence for {jnp.sum(mixture_state.converged)} out of {len(mixture_state.converged)} residues.")
 
-    if mixture_state.r.sum() == 0:
-        new_r =  vmap(cst.ci.vmm.e_step)(data.angles, mixture_state.mu,
-                                           mixture_state.kappa,
-                                           mixture_state.logw,
-                                           mixture_state.mask)
-        mixture_state = mixture_state._replace(logw = jnp.log(new_r.mean(axis=1)),
-                                           r=new_r)
+    if num_converged != num_residues:
+        unfinished = jnp.where(~mixture_state.converged)[0].tolist()
+        message = f"EM did not converge after 100 updates for residue indices {unfinished}"
+        logging.error(message)
+        raise RuntimeError(message)
+
+    update_r = time_and_message("Carried out final update of mixture component responsibilities",
+        vmap(cst.ci.vmm.update_r))
+    mixture_state = update_r(data.angles, mixture_state)
     
     D = cst.ci.dbscan.compute_distances(mixture_state)
     with open(output_prefix + "component_distance.pkl", "wb") as f:
@@ -186,13 +207,18 @@ def main():
     compute_states = time_and_message("Determined residue conformations", vmap(cst.ci.dbscan.dbscan_eps_std))
     states = compute_states(D, weights, mixture_state.r)
     build_tree = time_and_message("Calculated MIs and inferred maximimum information spanning tree", cst.MIST.from_residue_states)
-    tree = build_tree(states, [str(r) for r in data.residues], prior=args.prior, uncertainty=True)
+    tree = build_tree(states, [str(r) for r in data.residues], prior=args.prior, uncertainty=True,
+                      pair_batch_size=args.PAIR_BATCH_SIZE, probability_storage=args.probability_storage)
     fname = output_prefix + "RESULTS_ciMIST.h5"
 
     with open(fname.replace(".h5", ".pkl"), "wb") as f:
-        pkl.dump(tree, f)
+        if args.probability_storage == "sparse":
+            cst.io.dump_sparse_tree(tree, f)
+        else:
+            pkl.dump(tree, f)
 
-    cst.io.save_tree_h5(tree, fname)
+    cst.io.save_tree_h5(tree, fname,
+        compression=None if args.hdf5_compression == "none" else args.hdf5_compression)
 
     import shutil
     ANALYSIS_PATH = cst.__path__[0] + os.sep + "templates/analysis_template.ipynb"
@@ -202,8 +228,10 @@ def main():
     
 
     cst.pymol.tree_cartoon(tree, reference_structure, output_prefix + "pymol" + os.sep)
-    cst.io.save_coarse_graining_h5(states, fname)
-    cst.io.save_VMM_h5(mixture_state, fname)
+    cst.io.save_coarse_graining_h5(states, fname,
+        compression=None if args.hdf5_compression == "none" else args.hdf5_compression)
+    cst.io.save_VMM_h5(mixture_state, fname,
+        compression=None if args.hdf5_compression == "none" else args.hdf5_compression)
     
 
     return None
